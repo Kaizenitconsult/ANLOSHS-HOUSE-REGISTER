@@ -1,0 +1,1 @@
+The ANLOSHS House Register is a single system with one workspace per house. Each housemaster works within their own house — their own students, their own attendance record, their own exeat log — while the underlying system keeps everything running on shared, live infrastructure.
