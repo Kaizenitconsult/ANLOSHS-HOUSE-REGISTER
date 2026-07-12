@@ -56,6 +56,20 @@
   .house-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:4px;padding:26px 18px 22px;text-align:center;transition:transform .15s ease, box-shadow .15s ease;position:relative;overflow:hidden;box-shadow:0 14px 34px rgba(6,14,10,.35);}
   .house-card:hover{transform:translateY(-3px);box-shadow:0 18px 40px rgba(6,14,10,.42);cursor:pointer;}
   .house-card:before{content:'';position:absolute;top:0;left:0;right:0;height:5px;background:var(--card-color);}
+  .house-columns{display:grid;grid-template-columns:repeat(4,minmax(160px,200px));gap:18px;}
+  @media(max-width:900px){.house-columns{grid-template-columns:repeat(2,minmax(150px,200px));}}
+  .house-column{display:flex;flex-direction:column;gap:12px;}
+  .house-column .house-col-name{color:#fff;font-family:'Fraunces',serif;font-weight:600;font-size:15px;text-align:center;margin-bottom:2px;text-shadow:0 2px 6px rgba(0,0,0,.4);}
+  .section-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:4px;padding:16px 12px 14px;text-align:center;position:relative;overflow:hidden;box-shadow:0 10px 24px rgba(6,14,10,.3);transition:transform .15s ease, box-shadow .15s ease;}
+  .section-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(6,14,10,.38);cursor:pointer;}
+  .section-card:before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--card-color);}
+  .section-card .section-role{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:6px;}
+  .crest-section{width:42px;height:48px;margin:0 auto 8px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:16px;font-weight:600;}
+  .management-entry{margin-top:32px;max-width:480px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:16px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .15s ease, transform .15s ease;}
+  .management-entry:hover{background:rgba(255,255,255,.11);transform:translateY(-2px);}
+  .management-entry-icon{font-size:22px;color:#EFEBDD;flex-shrink:0;}
+  .management-entry-title{color:#fff;font-family:'Fraunces',serif;font-weight:600;font-size:14.5px;}
+  .management-entry-sub{color:#B9C2B8;font-size:11.5px;margin-top:2px;}
   .crest{width:58px;height:66px;margin:6px auto 16px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
   .house-card h3{margin:0 0 4px;font-size:17px;}
   .house-card .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-soft);}
@@ -175,12 +189,31 @@
 /* =================== DATA / CONSTANTS =================== */
 const DEFAULT_SCHOOL_LOGO = 'data:image/jpeg;base64,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';
 const HOUSES = [
+  {id:'adeladza-red',   name:'Adeladza House',  tag:'RED',    color:'var(--adeladza)', colorTint:'var(--adeladza-tint)', hex:'#A8323D', tintHex:'#F3E2E3', dark:'#7F2530'},
   {id:'doe-green',      name:'Doe House',       tag:'GREEN',  color:'var(--doe)',      colorTint:'var(--doe-tint)',      hex:'#2F6E4F', tintHex:'#E4EFE7', dark:'#1F4A35'},
   {id:'fiagbe-blue',    name:'Fiagbe House',    tag:'BLUE',   color:'var(--fiagbe)',   colorTint:'var(--fiagbe-tint)',   hex:'#28508F', tintHex:'#E3EAF4', dark:'#1B3A67'},
-  {id:'adeladza-red',   name:'Adeladza House',  tag:'RED',    color:'var(--adeladza)', colorTint:'var(--adeladza-tint)', hex:'#A8323D', tintHex:'#F3E2E3', dark:'#7F2530'},
   {id:'sorkpor-yellow', name:'Sorkpor House',   tag:'YELLOW', color:'var(--sorkpor)',  colorTint:'var(--sorkpor-tint)',  hex:'#B9840F', tintHex:'#F5EAD3', dark:'#8A620A'},
 ];
 const DAY_NAMES = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+
+// Each house now has two independent logins/rosters under it: a Male section (run by
+// the Housemaster) and a Female section (run by the Housemistress). Everywhere in the
+// app that used to key data by houseId now uses a "sectionKey" like 'adeladza-red:male'
+// instead — the house id is still there (so branding/colour/logo stay shared per house),
+// just with the section appended. getHouse() strips the suffix to find the base house.
+const SECTIONS = [
+  {id:'male', label:'Male', portfolioDefault:'Housemaster'},
+  {id:'female', label:'Female', portfolioDefault:'Housemistress'},
+];
+function baseHouseId(sectionKey){ return sectionKey ? sectionKey.split(':')[0] : sectionKey; }
+function sectionOf(sectionKey){ return sectionKey && sectionKey.includes(':') ? sectionKey.split(':')[1] : null; }
+function sectionMeta(sectionId){ return SECTIONS.find(s=>s.id===sectionId) || SECTIONS[0]; }
+const MANAGEMENT_ID = 'school-management';
+function allSectionKeys(){
+  const keys = [];
+  HOUSES.forEach(h=>SECTIONS.forEach(sec=>keys.push(h.id+':'+sec.id)));
+  return keys;
+}
 
 /* =================== FIREBASE SETUP =================== */
 // This app stores all its data (students, attendance, exeats, PINs) in a Firebase
@@ -220,9 +253,9 @@ try{
 
 /* =================== STATE =================== */
 let state = {
-  screen: 'boot',        // 'boot' | 'select' | 'loading' | 'auth' | 'workspace'
+  screen: 'boot',        // 'boot' | 'select' | 'loading' | 'auth' | 'workspace' | 'management-auth' | 'management-dashboard'
   houseId: null,
-  authMode: null,        // 'setup' | 'login' — only relevant when screen==='auth'
+  authMode: null,        // 'setup' | 'login' — relevant when screen==='auth' or 'management-auth'
   authError: '',
   pinInput: '',
   tab: 'dashboard',      // dashboard | students | attendance | exeat | team
@@ -233,9 +266,12 @@ let state = {
   weekStart: mostRecentMonday(new Date()),
   attendance: {},        // {studentId: {Mon:bool,...}}
   studentSearch: '',
-  modal: null,           // {type:'student'|'staff'|'housemaster'|'exeat'|'school-logo'|'house-logo'|'change-pin', data:{...}}
+  modal: null,           // {type:'student'|'staff'|'housemaster'|'exeat'|'school-logo'|'house-logo'|'change-pin'|'management-lead'|'section-roster', data:{...}}
   schoolLogo: null,      // dataURL, falls back to DEFAULT_SCHOOL_LOGO
   houseLogos: {},        // {houseId: dataURL}
+  managementInfo: {lead: null},   // {name, portfolio, pinHash} — the school-management login
+  overview: {},                   // {sectionKey: {house, section, studentCount, ...}} — built when the overview dashboard loads
+  overviewLoading: false,
 };
 
 /* =================== HELPERS =================== */
@@ -247,7 +283,7 @@ function mostRecentMonday(d){ const date=new Date(d); const day=date.getDay(); c
 function fmtDateShort(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtDateFull(s){ if(!s) return '—'; return parseISO(s).toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 function daysBetween(a,b){ return Math.round((b-a)/86400000); }
-function getHouse(id){ return HOUSES.find(h=>h.id===id); }
+function getHouse(id){ return HOUSES.find(h=>h.id===baseHouseId(id)); }
 function initials(name){ if(!name) return '?'; return name.trim().split(/\s+/).slice(0,2).map(w=>w[0].toUpperCase()).join(''); }
 
 function computeExeatStatus(ex){
@@ -404,10 +440,10 @@ async function exportHouseDataToExcel(){
     const wb = XLSX.utils.book_new();
 
     const studentsRows = state.students.map(s=>({
-      'Name': s.name, 'Class': s.className||'', 'Admission No.': s.admNo||'',
-      'Gender': s.gender||'', 'Date added': s.dateAdded||'',
+      'Name': s.name, 'Class': s.className||'', 'Contact': s.contact||'',
+      'NHIS Number': s.nhis||'', 'Gender': s.gender||'', 'Date added': s.dateAdded||'',
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class':'','Admission No.':'','Gender':'','Date added':''}]), 'Students');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class':'','Contact':'','NHIS Number':'','Gender':'','Date added':''}]), 'Students');
 
     const exeatRows = state.exeats.map(e=>{
       const s = state.students.find(st=>st.id===e.studentId);
@@ -477,13 +513,79 @@ async function exportHouseDataToExcel(){
     }catch(e){ console.error('attendance export error', e); }
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attendanceRows.length?attendanceRows:[{'Week starting':'','Student':'','Class':'','Mon':'','Tue':'','Wed':'','Thu':'','Fri':'','Sat':'','Sun':'','Days present':'','Week %':''}]), 'Attendance');
 
-    const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-backup-${todayISO()}.xlsx`;
+    const sec = sectionMeta(sectionOf(state.houseId));
+    const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label}-backup-${todayISO()}.xlsx`;
     XLSX.writeFile(wb, filename);
     showToast('Download started — check your downloads folder.');
   }catch(e){
     console.error(e);
     showToast('Export failed — please try again.');
   }
+}
+
+function downloadStudentTemplate(){
+  if(typeof XLSX === 'undefined'){
+    showToast('Template tool failed to load — check your internet connection and try again.');
+    return;
+  }
+  const h = getHouse(state.houseId);
+  const sec = sectionMeta(sectionOf(state.houseId));
+  const sampleRow = { 'Name': 'e.g. Ama Serwaa', 'Class': 'e.g. SHS 2 Science A', 'Contact': 'e.g. 0241234567', 'NHIS Number': '' };
+  const ws = XLSX.utils.json_to_sheet([sampleRow]);
+  ws['!cols'] = [{wch:26},{wch:22},{wch:18},{wch:16}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Students');
+  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label}-student-template.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast('Template downloaded — replace the sample row with real students, keeping the same column headings.');
+}
+
+function handleStudentTemplateUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  if(typeof XLSX === 'undefined'){
+    showToast('Import tool failed to load — check your internet connection and try again.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const firstSheetName = wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName], { defval: '' });
+      const sec = sectionMeta(sectionOf(state.houseId));
+      let imported = 0, skipped = 0;
+      rows.forEach(row=>{
+        const get = (keys)=>{
+          for(const k of Object.keys(row)){
+            if(keys.includes(k.trim().toLowerCase())) return String(row[k]).trim();
+          }
+          return '';
+        };
+        const name = get(['name','full name','student name']);
+        if(!name || name.toLowerCase().startsWith('e.g.')){ skipped++; return; }
+        state.students.push({
+          id: uuid(),
+          name,
+          className: get(['class','className']),
+          contact: get(['contact','phone','phone number','contact number']),
+          nhis: get(['nhis number','nhis','nhis no.','nhis no']),
+          gender: sec.label,
+          photo: null,
+          dateAdded: todayISO(),
+        });
+        imported++;
+      });
+      if(imported>0){ render(); await saveStudents(); }
+      showToast(`Imported ${imported} student${imported===1?'':'s'}${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
+    }catch(e){
+      console.error('Template import error', e);
+      showToast('Could not read that file — make sure it\u2019s the .xlsx template with its column headings unchanged.');
+    }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 /* =================== ACTIONS =================== */
@@ -574,6 +676,137 @@ async function resetHouseLead(){
   render();
 }
 
+/* ---- School-management (all-house overview) access ---- */
+async function selectManagement(){
+  state.screen = 'loading';
+  render();
+  try{
+    const res = await safeGet('management-info:'+MANAGEMENT_ID);
+    state.managementInfo = res ? JSON.parse(res.value) : {lead:null};
+  }catch(e){ state.managementInfo = {lead:null}; }
+  state.pinInput=''; state.authError='';
+  state.authMode = (state.managementInfo.lead && state.managementInfo.lead.pinHash) ? 'login' : 'setup';
+  state.screen = 'management-auth';
+  render();
+}
+async function submitManagementSetup(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.mgName.value.trim();
+  const portfolio = f.mgPortfolio.value.trim();
+  const pin = f.pin.value.trim();
+  const pinConfirm = f.pinConfirm.value.trim();
+  if(!name){ state.authError='Enter your full name.'; render(); return; }
+  if(!portfolio){ state.authError='Enter your role/portfolio.'; render(); return; }
+  if(!isValidPin(pin)){ state.authError='PIN must be 4–6 digits.'; render(); return; }
+  if(pin!==pinConfirm){ state.authError='PINs do not match.'; render(); return; }
+  state.managementInfo.lead = { name, portfolio, pinHash: hashPin(pin, MANAGEMENT_ID) };
+  state.authError='';
+  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
+  state.screen='management-dashboard';
+  render();
+  showToast('Management account created.');
+  loadOverviewData();
+}
+function submitManagementLogin(e){
+  e.preventDefault();
+  const f = e.target;
+  const enteredName = f.mgNameConfirm.value.trim();
+  const pin = f.pin.value.trim();
+  const lead = state.managementInfo.lead;
+  const nameMatches = enteredName.toLowerCase() === lead.name.trim().toLowerCase();
+  const pinMatches = hashPin(pin, MANAGEMENT_ID) === lead.pinHash;
+  if(nameMatches && pinMatches){
+    state.authError=''; state.pinInput='';
+    state.screen='management-dashboard';
+    render();
+    loadOverviewData();
+  } else {
+    state.authError = 'Name or PIN doesn\u2019t match our records.';
+    state.pinInput='';
+    render();
+  }
+}
+async function resetManagementLead(){
+  if(!confirm('This clears the management name and PIN so a new account can be created. Continue?')) return;
+  state.managementInfo.lead = null;
+  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
+  state.authMode='setup'; state.authError=''; state.pinInput='';
+  render();
+}
+function exitManagement(){
+  state.screen='select'; state.overview={}; state.managementInfo={lead:null};
+  state.authMode=null; state.authError=''; state.pinInput='';
+  render();
+}
+async function submitManagementLead(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.mgName.value.trim();
+  const portfolio = f.mgPortfolio.value.trim();
+  let pinHash = state.managementInfo.lead ? state.managementInfo.lead.pinHash : null;
+  const newPin = f.newPin.value.trim();
+  const newPinConfirm = f.newPinConfirm.value.trim();
+  if(newPin || newPinConfirm){
+    if(!isValidPin(newPin)){ showToast('New PIN must be 4–6 digits.'); return; }
+    if(newPin !== newPinConfirm){ showToast('New PINs do not match.'); return; }
+    pinHash = hashPin(newPin, MANAGEMENT_ID);
+  }
+  state.managementInfo.lead = { name, portfolio, pinHash };
+  closeModal(); render();
+  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
+  showToast(newPin ? 'Management account and PIN updated.' : 'Management account saved.');
+}
+
+async function loadOverviewData(){
+  state.overviewLoading = true; render();
+  const weekSuffix = isoDate(mostRecentMonday(new Date()));
+  const todayIdx = DAY_NAMES.findIndex((d,i)=>{
+    const dt = new Date(mostRecentMonday(new Date())); dt.setDate(dt.getDate()+i);
+    return isoDate(dt) === todayISO();
+  });
+  const daysElapsed = todayIdx>=0 ? todayIdx+1 : 7;
+  const results = await Promise.all(allSectionKeys().map(async sectionKey=>{
+    const [studentsRes, exeatsRes, infoRes, attRes] = await Promise.all([
+      safeGet('students:'+sectionKey),
+      safeGet('exeats:'+sectionKey),
+      safeGet('house-info:'+sectionKey),
+      safeGet('attendance:'+sectionKey+':'+weekSuffix),
+    ]);
+    const students = studentsRes ? JSON.parse(studentsRes.value) : [];
+    const exeats = exeatsRes ? JSON.parse(exeatsRes.value) : [];
+    const info = infoRes ? JSON.parse(infoRes.value) : {housemaster:null, staff:[]};
+    const attendance = attRes ? JSON.parse(attRes.value) : {};
+    const flagged = exeats.map(e=>({...e, _status:computeExeatStatus(e)})).filter(e=>e._status.status==='overdue')
+      .map(e=>{
+        const s = students.find(st=>st.id===e.studentId);
+        return { ...e, studentName: s?s.name:'Unknown student', studentPhoto: s?s.photo:null };
+      });
+    let checked=0, possible=0;
+    students.forEach(s=>{
+      for(let i=0;i<daysElapsed;i++){ possible++; if(attendance[s.id] && attendance[s.id][DAY_NAMES[i]]) checked++; }
+    });
+    const attendancePct = possible>0 ? Math.round((checked/possible)*100) : null;
+    return {
+      sectionKey,
+      house: getHouse(sectionKey),
+      section: sectionMeta(sectionOf(sectionKey)),
+      leadName: info.housemaster ? info.housemaster.name : null,
+      leadPortfolio: info.housemaster ? info.housemaster.portfolio : null,
+      studentCount: students.length,
+      onExeatCount: exeats.filter(e=>!e.actualReturn).length,
+      flagged,
+      attendancePct,
+      students,
+    };
+  }));
+  const overview = {};
+  results.forEach(r=>{ overview[r.sectionKey] = r; });
+  state.overview = overview;
+  state.overviewLoading = false;
+  render();
+}
+
 function openModal(type, data){ state.modal = {type, data: data ? {...data} : {}}; render(); }
 function closeModal(){ state.modal = null; render(); }
 
@@ -581,12 +814,14 @@ async function submitStudent(e){
   e.preventDefault();
   const f = e.target;
   const data = state.modal.data;
+  const sec = sectionMeta(sectionOf(state.houseId));
   const student = {
     id: data.id || uuid(),
     name: f.name.value.trim(),
-    admNo: f.admNo.value.trim(),
+    contact: f.contact.value.trim(),
+    nhis: f.nhis.value.trim(),
     className: f.className.value.trim(),
-    gender: f.gender.value,
+    gender: data.gender || sec.label,
     photo: data.photo || null,
     dateAdded: data.dateAdded || todayISO(),
   };
@@ -671,9 +906,10 @@ async function submitHouseLogo(e){
   e.preventDefault();
   const logo = state.modal.data.logo;
   if(!logo){ showToast('Choose an image first.'); return; }
-  state.houseLogos[state.houseId] = logo;
+  const hId = baseHouseId(state.houseId);
+  state.houseLogos[hId] = logo;
   closeModal(); render();
-  await persist('house-logo:'+state.houseId, logo);
+  await persist('house-logo:'+hId, logo);
   showToast('House logo updated.');
 }
 
@@ -728,14 +964,29 @@ async function changeWeek(delta){
 /* =================== RENDER =================== */
 function render(){
   const root = document.getElementById('root');
+  const active = document.activeElement;
+  const restoreFocus = (active && root.contains(active) && (active.tagName==='INPUT' || active.tagName==='TEXTAREA') && active.id)
+    ? { id: active.id, selStart: active.selectionStart, selEnd: active.selectionEnd }
+    : null;
   let screenHtml;
   if(state.screen==='boot' || state.screen==='loading') screenHtml = renderLoadingScreen();
   else if(state.screen==='setup-needed') screenHtml = renderSetupNeededScreen();
   else if(state.screen==='select') screenHtml = renderSelectScreen();
   else if(state.screen==='auth') screenHtml = renderAuthScreen();
+  else if(state.screen==='management-auth') screenHtml = renderManagementAuthScreen();
+  else if(state.screen==='management-dashboard') screenHtml = renderManagementDashboard();
   else screenHtml = renderWorkspace();
   root.innerHTML = screenHtml + (state.modal ? renderModal() : '');
   attachGlobalHandlers();
+  if(restoreFocus){
+    const el = document.getElementById(restoreFocus.id);
+    if(el){
+      el.focus();
+      if(el.setSelectionRange && restoreFocus.selStart!=null){
+        try{ el.setSelectionRange(restoreFocus.selStart, restoreFocus.selEnd); }catch(e){}
+      }
+    }
+  }
 }
 
 function schoolLogoSrc(){ return state.schoolLogo || DEFAULT_SCHOOL_LOGO; }
@@ -777,16 +1028,28 @@ function renderSelectScreen(){
     <div class="select-header">
       <div class="eyebrow">ANLO SENIOR HIGH SCHOOL</div>
       <h1>House Register</h1>
-      <p>Choose the house you manage to open its dashboard.</p>
+      <p>Each house has two sections — choose the one you manage to open its dashboard.</p>
     </div>
-    <div class="house-grid">
+    <div class="house-columns">
       ${HOUSES.map(h=>`
-        <div class="house-card" style="--card-color:${h.hex}" onclick="selectHouse('${h.id}')">
-          ${houseCrestHtml(h,'crest')}
-          <h3>${h.name}</h3>
-          <div class="tag">${h.tag}</div>
+        <div class="house-column">
+          <div class="house-col-name">${h.name}</div>
+          ${SECTIONS.map(sec=>`
+            <div class="section-card" style="--card-color:${h.hex}" onclick="selectHouse('${h.id}:${sec.id}')">
+              ${houseCrestHtml(h,'crest-section')}
+              <div class="tag">${h.tag}</div>
+              <div class="section-role">${sec.label} &middot; ${sec.portfolioDefault}</div>
+            </div>
+          `).join('')}
         </div>
       `).join('')}
+    </div>
+    <div class="management-entry" onclick="selectManagement()">
+      <div class="management-entry-icon">&#9737;</div>
+      <div>
+        <div class="management-entry-title">School Management — All-House Overview</div>
+        <div class="management-entry-sub">For the Assistant Headmaster (Domestic) / Senior Housemaster &middot; view every house at a glance</div>
+      </div>
     </div>
     <button class="switch-house-btn" style="width:auto;margin-top:28px;border:none;color:#B9C2B8;text-decoration:underline;background:transparent;" onclick="openModal('school-logo')">Update school logo</button>
     <div class="footer-credit">HOUSE MANAGEMENT SYSTEM &middot; DEVELOPED BY KAIZEN TECHNOLOGIES — FRANCIS NORMANYO</div>
@@ -795,21 +1058,22 @@ function renderSelectScreen(){
 
 function renderAuthScreen(){
   const h = getHouse(state.houseId);
+  const sec = sectionMeta(sectionOf(state.houseId));
   return `
   <div class="select-screen">
     ${houseCrestHtml(h,'crest')}
     ${state.authMode==='setup' ? `
       <div class="select-header">
-        <div class="eyebrow">${h.name} &middot; ${h.tag}</div>
+        <div class="eyebrow">${h.name} &middot; ${sec.label} Section</div>
         <h1 style="font-size:30px;">Set up house lead</h1>
-        <p>No housemaster/mistress is on record yet. Create the account that will manage this house — you'll choose your own PIN to log in next time.</p>
+        <p>No ${sec.portfolioDefault.toLowerCase()} is on record yet for this section. Create the account that will manage the ${sec.label.toLowerCase()} students in ${h.name} — you'll choose your own PIN to log in next time.</p>
       </div>
       <div class="panel" style="max-width:380px;width:100%;">
         <form onsubmit="submitAuthSetup(event)">
           <div class="field"><label>Full name</label><input type="text" name="hmName" required autofocus></div>
           <div class="field"><label>Portfolio</label>
             <select name="hmPortfolio">
-              ${['Housemaster','Housemistress','Assistant Housemaster','Assistant Housemistress'].map(p=>`<option>${p}</option>`).join('')}
+              ${['Housemaster','Housemistress','Assistant Housemaster','Assistant Housemistress'].map(p=>`<option ${p===sec.portfolioDefault?'selected':''}>${p}</option>`).join('')}
             </select>
           </div>
           <div class="field-row">
@@ -822,7 +1086,7 @@ function renderAuthScreen(){
       </div>
     ` : `
       <div class="select-header">
-        <div class="eyebrow">${h.name} &middot; ${h.tag}</div>
+        <div class="eyebrow">${h.name} &middot; ${sec.label} Section</div>
         <h1 style="font-size:30px;">Welcome back</h1>
         <p>${state.houseInfo.housemaster.portfolio} on record: ${state.houseInfo.housemaster.name}. Enter your name and PIN to continue.</p>
       </div>
@@ -840,6 +1104,135 @@ function renderAuthScreen(){
   </div>`;
 }
 
+function renderManagementAuthScreen(){
+  return `
+  <div class="select-screen">
+    <div class="crest" style="background:#3A4640;">&#9737;</div>
+    ${state.authMode==='setup' ? `
+      <div class="select-header">
+        <div class="eyebrow">SCHOOL MANAGEMENT</div>
+        <h1 style="font-size:30px;">Set up management access</h1>
+        <p>No account is on record yet for the all-house overview. Create the account that will monitor every house — you'll choose your own PIN to log in next time.</p>
+      </div>
+      <div class="panel" style="max-width:380px;width:100%;">
+        <form onsubmit="submitManagementSetup(event)">
+          <div class="field"><label>Full name</label><input type="text" name="mgName" required autofocus></div>
+          <div class="field"><label>Role / portfolio</label><input type="text" name="mgPortfolio" placeholder="e.g. Assistant Headmaster (Domestic)" required></div>
+          <div class="field-row">
+            <div class="field"><label>Choose a PIN (4–6 digits)</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+            <div class="field"><label>Confirm PIN</label><input type="password" name="pinConfirm" inputmode="numeric" maxlength="6" required></div>
+          </div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Create account &amp; view overview</button>
+        </form>
+      </div>
+    ` : `
+      <div class="select-header">
+        <div class="eyebrow">SCHOOL MANAGEMENT</div>
+        <h1 style="font-size:30px;">Welcome back</h1>
+        <p>${state.managementInfo.lead.portfolio} on record: ${state.managementInfo.lead.name}. Enter your name and PIN to continue.</p>
+      </div>
+      <div class="panel" style="max-width:320px;width:100%;">
+        <form onsubmit="submitManagementLogin(event)">
+          <div class="field"><label>Full name</label><input type="text" name="mgNameConfirm" required autofocus></div>
+          <div class="field"><label>PIN</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
+        </form>
+        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetManagementLead()">Forgot PIN? Reset management account</button>
+      </div>
+    `}
+    <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Back</button>
+  </div>`;
+}
+
+function renderManagementDashboard(){
+  const sections = Object.values(state.overview);
+  const totals = {
+    students: sections.reduce((sum,s)=>sum+s.studentCount,0),
+    onExeat: sections.reduce((sum,s)=>sum+s.onExeatCount,0),
+    flagged: sections.reduce((sum,s)=>sum+s.flagged.length,0),
+  };
+  const attPcts = sections.filter(s=>s.attendancePct!=null).map(s=>s.attendancePct);
+  const overallAttendance = attPcts.length ? Math.round(attPcts.reduce((a,b)=>a+b,0)/attPcts.length) : null;
+  const allFlagged = sections.flatMap(s=>s.flagged.map(f=>({...f, house:s.house, section:s.section})))
+    .sort((a,b)=>b._status.daysOverdue - a._status.daysOverdue);
+
+  return `
+  <div class="workspace">
+    <div class="sidebar">
+      <div class="brand">
+        <div class="crest-sm" style="background:#3A4640;">&#9737;</div>
+        <div class="brand-text">
+          <div class="h">School Management</div>
+          <div class="s">All-house overview</div>
+        </div>
+      </div>
+      <div class="sidebar-spacer"></div>
+      ${state.managementInfo.lead ? `<div style="font-size:11px;color:#9CA79E;margin-bottom:8px;">Signed in as ${state.managementInfo.lead.name}</div>` : ''}
+      <button class="switch-house-btn" style="border-color:rgba(255,255,255,.28);color:#D6DBD3;margin-bottom:8px;" onclick="loadOverviewData()">&#8635; Refresh data</button>
+      <button class="switch-house-btn" style="border-color:rgba(255,255,255,.28);color:#D6DBD3;margin-bottom:8px;" onclick='openModal("management-lead", ${JSON.stringify(state.managementInfo.lead||{}).replace(/'/g,"&#39;")})'>Account &amp; PIN</button>
+      <button class="switch-house-btn" onclick="exitManagement()">&larr; Exit overview</button>
+      <div class="sidebar-credit">ANLO SHS HOUSE REGISTER<br>Kaizen Technologies — F. Normanyo</div>
+    </div>
+    <div class="main">
+      <div class="page-header">
+        <div><h1>School-wide Overview</h1><div class="sub">Every house and section, at a glance</div></div>
+      </div>
+      ${state.overviewLoading ? `<div class="loading-note">Loading every house's records\u2026</div>` : `
+      <div class="stat-row">
+        <div class="stat-card"><div class="num">${totals.students}</div><div class="label">Students, all houses</div></div>
+        <div class="stat-card"><div class="num">${totals.onExeat}</div><div class="label">Currently on exeat</div></div>
+        <div class="stat-card"><div class="num">${overallAttendance!=null?overallAttendance+'%':'—'}</div><div class="label">Average attendance this week</div></div>
+        <div class="stat-card flag"><div class="num">${totals.flagged}</div><div class="label">Flagged — overdue return</div></div>
+      </div>
+
+      ${allFlagged.length>0 ? `
+      <div class="alert-banner">
+        <h3>⚠ School-wide Exeat Watch — students overdue across all houses</h3>
+        ${allFlagged.map(f=>`
+          <div class="flag-row">
+            ${photoOrInitials({name:f.studentName, photo:f.studentPhoto}, 'thumb')}
+            <div class="name">${f.studentName} <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">&middot; ${f.house.name} (${f.section.label})</span></div>
+            <div style="font-size:12px;color:var(--ink-soft);">expected back ${fmtDateFull(f.expectedReturn)}</div>
+            ${callButtonHtml(f.contact, 'Call')}
+            <div class="days">${f._status.daysOverdue} day${f._status.daysOverdue===1?'':'s'} overdue</div>
+          </div>
+        `).join('')}
+      </div>` : `
+      <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
+        <div style="font-size:13.5px;color:var(--accent-dark);">✓ No overdue exeats anywhere right now — every house is accounted for.</div>
+      </div>`}
+
+      <div class="panel" style="padding:0;">
+        <div style="padding:20px 22px 4px;"><h3 style="margin:0;">Every house, side by side</h3></div>
+        <table>
+          <thead><tr><th>House</th><th>Section</th><th>Lead</th><th>Students</th><th>Attendance</th><th>On exeat</th><th>Flagged</th><th></th></tr></thead>
+          <tbody>
+          ${HOUSES.flatMap(h=>SECTIONS.map(sec=>{
+            const key = h.id+':'+sec.id;
+            const s = state.overview[key];
+            if(!s) return '';
+            return `<tr class="${s.flagged.length>0?'flagged':''}">
+              <td>${h.name}</td>
+              <td>${sec.label}</td>
+              <td>${s.leadName ? s.leadName+` <span class="mono" style="color:var(--ink-soft);font-size:10.5px;">(${s.leadPortfolio})</span>` : '<span style="color:var(--ink-soft);">Not set up</span>'}</td>
+              <td class="mono">${s.studentCount}</td>
+              <td class="mono">${s.attendancePct!=null ? s.attendancePct+'%' : '—'}</td>
+              <td class="mono">${s.onExeatCount}</td>
+              <td>${s.flagged.length>0 ? `<span class="badge overdue">${s.flagged.length}</span>` : `<span class="badge returned">0</span>`}</td>
+              <td><button class="icon-btn" onclick='openModal("section-roster", ${JSON.stringify({sectionKey:key}).replace(/'/g,"&#39;")})'>View roster</button></td>
+            </tr>`;
+          })).join('')}
+          </tbody>
+        </table>
+      </div>
+      `}
+    </div>
+  </div>
+  `;
+}
+
 function renderWorkspace(){
   const h = getHouse(state.houseId);
   const flags = flaggedExeats();
@@ -854,6 +1247,7 @@ function renderWorkspace(){
 }
 
 function renderSidebar(h, flagCount){
+  const sec = sectionMeta(sectionOf(state.houseId));
   const items = [
     ['dashboard','Dashboard'],
     ['students','Students'],
@@ -867,7 +1261,7 @@ function renderSidebar(h, flagCount){
       ${houseCrestHtml(h,'crest-sm')}
       <div class="brand-text">
         <div class="h">${h.name}</div>
-        <div class="s">${h.tag}</div>
+        <div class="s">${h.tag} &middot; ${sec.label} Section</div>
       </div>
     </div>
     ${items.map(([key,label])=>`
@@ -960,7 +1354,7 @@ function photoOrInitials(student, cls){
 
 function renderStudents(h){
   const q = state.studentSearch.trim().toLowerCase();
-  const list = state.students.filter(s=> !q || s.name.toLowerCase().includes(q) || (s.className||'').toLowerCase().includes(q) || (s.admNo||'').toLowerCase().includes(q));
+  const list = state.students.filter(s=> !q || s.name.toLowerCase().includes(q) || (s.className||'').toLowerCase().includes(q) || (s.contact||'').toLowerCase().includes(q) || (s.nhis||'').toLowerCase().includes(q));
   const overdueIds = new Set(flaggedExeats().map(f=>f.studentId));
   return `
   <div class="page-header">
@@ -968,20 +1362,27 @@ function renderStudents(h){
     <button class="btn" onclick="openModal('student')">+ Add student</button>
   </div>
   <div class="toolbar">
-    <input class="search-input" placeholder="Search by name, class or admission no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
+    <input id="student-search-input" class="search-input" placeholder="Search by name, class, contact or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
+    <div style="display:flex;gap:8px;">
+      <button class="btn secondary small" onclick="downloadStudentTemplate()">⬇ Download template</button>
+      <label class="btn secondary small" style="cursor:pointer;margin:0;">
+        ⬆ Upload filled template
+        <input type="file" accept=".xlsx,.xls" onchange="handleStudentTemplateUpload(this)" style="display:none;">
+      </label>
+    </div>
   </div>
   <div class="panel" style="padding:0;">
     ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students yet. Click "Add student" to register the first one.' : 'No students match your search.'}</div>` : `
     <table>
-      <thead><tr><th></th><th>Name</th><th>Class</th><th>Adm. No.</th><th>Gender</th><th></th><th></th></tr></thead>
+      <thead><tr><th></th><th>Name</th><th>Class</th><th>Contact</th><th>NHIS No.</th><th></th><th></th></tr></thead>
       <tbody>
       ${list.map(s=>`
         <tr class="${overdueIds.has(s.id)?'flagged':''}">
           <td>${photoOrInitials(s,'')}</td>
           <td>${s.name} ${overdueIds.has(s.id)?'<span class="badge overdue" style="margin-left:6px;">flagged</span>':''}</td>
           <td>${s.className||'—'}</td>
-          <td class="mono">${s.admNo||'—'}</td>
-          <td>${s.gender||'—'}</td>
+          <td class="mono">${s.contact||'—'}</td>
+          <td class="mono">${s.nhis||'—'}</td>
           <td class="row-actions">
             <button class="icon-btn" onclick='openModal("student", ${JSON.stringify(s).replace(/'/g,"&#39;")})'>Edit</button>
           </td>
@@ -1132,6 +1533,8 @@ function renderModal(){
   if(type==='exeat') return renderExeatModal(data);
   if(type==='school-logo') return renderSchoolLogoModal(data);
   if(type==='house-logo') return renderHouseLogoModal(data);
+  if(type==='management-lead') return renderManagementLeadModal(data);
+  if(type==='section-roster') return renderSectionRosterModal(data);
   return '';
 }
 
@@ -1193,22 +1596,25 @@ function renderStudentModal(d){
         <div class="photo-upload">
           ${d.photo ? `<img class="photo-preview" src="${d.photo}">` : `<div class="photo-preview" style="display:flex;align-items:center;justify-content:center;font-family:Fraunces,serif;color:var(--ink-soft);">${initials(d.name||'')||'?'}</div>`}
           <div>
-            <input class="file-btn" type="file" accept="image/*" onchange="handlePhotoInput(this)">
-            <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">JPG or PNG, auto-resized</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <label class="btn secondary small" style="cursor:pointer;margin:0;">
+                🖼 Choose photo
+                <input type="file" accept="image/*" onchange="handlePhotoInput(this)" style="display:none;">
+              </label>
+              <label class="btn secondary small" style="cursor:pointer;margin:0;">
+                📷 Take photo
+                <input type="file" accept="image/*" capture="environment" onchange="handlePhotoInput(this)" style="display:none;">
+              </label>
+            </div>
+            <div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">JPG or PNG, auto-resized. "Take photo" opens the camera directly on phones/tablets.</div>
           </div>
         </div>
         <div class="field"><label>Full name</label><input type="text" name="name" value="${escapeAttr(d.name||'')}" required></div>
         <div class="field-row">
           <div class="field"><label>Class</label><input type="text" name="className" placeholder="e.g. SHS 2 Science A" value="${escapeAttr(d.className||'')}"></div>
-          <div class="field"><label>Admission No.</label><input type="text" name="admNo" value="${escapeAttr(d.admNo||'')}"></div>
+          <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no." value="${escapeAttr(d.contact||'')}"></div>
         </div>
-        <div class="field"><label>Gender</label>
-          <select name="gender">
-            <option value="" ${!d.gender?'selected':''}>—</option>
-            <option value="Male" ${d.gender==='Male'?'selected':''}>Male</option>
-            <option value="Female" ${d.gender==='Female'?'selected':''}>Female</option>
-          </select>
-        </div>
+        <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No." value="${escapeAttr(d.nhis||'')}"></div>
         <div class="modal-actions">
           <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn">Save student</button>
@@ -1295,6 +1701,63 @@ function renderExeatModal(d){
   </div>`;
 }
 
+function renderManagementLeadModal(d){
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>Management account</h2>
+      <form onsubmit="submitManagementLead(event)">
+        <div class="field"><label>Full name</label><input type="text" name="mgName" value="${escapeAttr(d.name||'')}" required></div>
+        <div class="field"><label>Role / portfolio</label><input type="text" name="mgPortfolio" placeholder="e.g. Senior Housemaster" value="${escapeAttr(d.portfolio||'')}" required></div>
+        <div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px;">
+          <label>${d.pinHash ? 'Change login PIN (leave blank to keep current)' : 'Set a login PIN (4–6 digits)'}</label>
+          <div class="field-row">
+            <input type="password" name="newPin" inputmode="numeric" maxlength="6" placeholder="New PIN">
+            <input type="password" name="newPinConfirm" inputmode="numeric" maxlength="6" placeholder="Confirm new PIN">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+function renderSectionRosterModal(d){
+  const s = state.overview[d.sectionKey];
+  if(!s) return '';
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal" style="max-width:560px;">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>${s.house.name} &middot; ${s.section.label} Section</h2>
+      <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+        ${s.leadName ? `${s.leadPortfolio}: ${s.leadName}` : 'No house lead set up yet'} &middot; ${s.studentCount} student${s.studentCount===1?'':'s'}
+      </div>
+      ${s.students.length===0 ? `<div class="empty-state">No students registered in this section yet.</div>` : `
+      <table>
+        <thead><tr><th></th><th>Name</th><th>Class</th><th>Contact</th></tr></thead>
+        <tbody>
+        ${s.students.map(st=>`
+          <tr>
+            <td>${photoOrInitials(st,'')}</td>
+            <td>${st.name}</td>
+            <td>${st.className||'—'}</td>
+            <td class="mono">${st.contact||'—'}</td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>`}
+      <div class="modal-actions">
+        <button type="button" class="btn secondary" onclick="closeModal()">Close</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function attachGlobalHandlers(){ /* using inline handlers; nothing extra needed */ }
 
@@ -1309,6 +1772,11 @@ window.submitAuthSetup=submitAuthSetup; window.submitAuthLogin=submitAuthLogin; 
 window.handleSchoolLogoInput=handleSchoolLogoInput; window.handleHouseLogoInput=handleHouseLogoInput;
 window.submitSchoolLogo=submitSchoolLogo; window.submitHouseLogo=submitHouseLogo;
 window.exportHouseDataToExcel=exportHouseDataToExcel;
+window.downloadStudentTemplate=downloadStudentTemplate; window.handleStudentTemplateUpload=handleStudentTemplateUpload;
+window.selectManagement=selectManagement; window.submitManagementSetup=submitManagementSetup;
+window.submitManagementLogin=submitManagementLogin; window.resetManagementLead=resetManagementLead;
+window.exitManagement=exitManagement; window.submitManagementLead=submitManagementLead;
+window.loadOverviewData=loadOverviewData;
 
 init();
 </script>
