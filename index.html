@@ -65,11 +65,13 @@
   .section-card:before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--card-color);}
   .section-card .section-role{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:6px;}
   .crest-section{width:42px;height:48px;margin:0 auto 8px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:16px;font-weight:600;}
-  .management-entry{margin-top:32px;max-width:480px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:16px 20px;display:flex;align-items:center;gap:14px;cursor:pointer;transition:background .15s ease, transform .15s ease;}
-  .management-entry:hover{background:rgba(255,255,255,.11);transform:translateY(-2px);}
-  .management-entry-icon{font-size:22px;color:#EFEBDD;flex-shrink:0;}
+  .management-entry{margin-top:32px;max-width:520px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:16px 20px;display:flex;align-items:flex-start;gap:14px;}
+  .management-entry-icon{font-size:22px;color:#EFEBDD;flex-shrink:0;margin-top:2px;}
   .management-entry-title{color:#fff;font-family:'Fraunces',serif;font-weight:600;font-size:14.5px;}
   .management-entry-sub{color:#B9C2B8;font-size:11.5px;margin-top:2px;}
+  .role-pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .role-pill{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);color:#EFEBDD;font-size:11.5px;padding:7px 12px;border-radius:20px;cursor:pointer;transition:background .15s ease;}
+  .role-pill:hover{background:rgba(255,255,255,.2);}
   .crest{width:58px;height:66px;margin:6px auto 16px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
   .house-card h3{margin:0 0 4px;font-size:17px;}
   .house-card .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-soft);}
@@ -208,12 +210,36 @@ const SECTIONS = [
 function baseHouseId(sectionKey){ return sectionKey ? sectionKey.split(':')[0] : sectionKey; }
 function sectionOf(sectionKey){ return sectionKey && sectionKey.includes(':') ? sectionKey.split(':')[1] : null; }
 function sectionMeta(sectionId){ return SECTIONS.find(s=>s.id===sectionId) || SECTIONS[0]; }
-const MANAGEMENT_ID = 'school-management';
 function allSectionKeys(){
   const keys = [];
   HOUSES.forEach(h=>SECTIONS.forEach(sec=>keys.push(h.id+':'+sec.id)));
   return keys;
 }
+function sectionKeysForGender(genderId){
+  return HOUSES.map(h=>h.id+':'+genderId);
+}
+
+// School Management: a read-only, all-house dashboard for the four core management
+// members. Each gets their own name+PIN login (like a house section does), but they
+// all see the exact same overview — the role only identifies who's signed in.
+const MANAGEMENT_ROLES = [
+  {id:'headmaster', label:'Headmaster'},
+  {id:'admin', label:'Asst. Headmaster (Administration)'},
+  {id:'domestic', label:'Asst. Headmaster (Domestic)'},
+  {id:'academic', label:'Asst. Headmaster (Academic)'},
+];
+function managementRoleMeta(roleId){ return MANAGEMENT_ROLES.find(r=>r.id===roleId) || MANAGEMENT_ROLES[0]; }
+
+// Senior Housemaster / Senior Housemistress: a separate, active-management portal (not
+// read-only). One account per gender, each overseeing all four houses for that gender.
+// They admit new students and assign them to a house, and can sign exeats for any
+// student of their gender in any house — the same underlying records the individual
+// housemaster/mistress for that house already sees, just reachable from one place.
+const SENIOR_ROLES = [
+  {id:'male', label:'Senior Housemaster', short:'Male (all houses)'},
+  {id:'female', label:'Senior Housemistress', short:'Female (all houses)'},
+];
+function seniorRoleMeta(genderId){ return SENIOR_ROLES.find(r=>r.id===genderId) || SENIOR_ROLES[0]; }
 
 /* =================== FIREBASE SETUP =================== */
 // This app stores all its data (students, attendance, exeats, PINs) in a Firebase
@@ -253,9 +279,9 @@ try{
 
 /* =================== STATE =================== */
 let state = {
-  screen: 'boot',        // 'boot' | 'select' | 'loading' | 'auth' | 'workspace' | 'management-auth' | 'management-dashboard'
+  screen: 'boot',        // boot|select|loading|auth|workspace|management-auth|management-dashboard|senior-auth|senior-portal
   houseId: null,
-  authMode: null,        // 'setup' | 'login' — relevant when screen==='auth' or 'management-auth'
+  authMode: null,        // 'setup' | 'login' — relevant on any *-auth screen
   authError: '',
   pinInput: '',
   tab: 'dashboard',      // dashboard | students | attendance | exeat | team
@@ -266,12 +292,19 @@ let state = {
   weekStart: mostRecentMonday(new Date()),
   attendance: {},        // {studentId: {Mon:bool,...}}
   studentSearch: '',
-  modal: null,           // {type:'student'|'staff'|'housemaster'|'exeat'|'school-logo'|'house-logo'|'change-pin'|'management-lead'|'section-roster', data:{...}}
+  modal: null,           // {type:'student'|'staff'|'housemaster'|'exeat'|'school-logo'|'house-logo'|'change-pin'|'management-lead'|'section-roster'|'senior-lead'|'admit-student', data:{...}}
   schoolLogo: null,      // dataURL, falls back to DEFAULT_SCHOOL_LOGO
   houseLogos: {},        // {houseId: dataURL}
-  managementInfo: {lead: null},   // {name, portfolio, pinHash} — the school-management login
-  overview: {},                   // {sectionKey: {house, section, studentCount, ...}} — built when the overview dashboard loads
+  managementRole: null,            // which of MANAGEMENT_ROLES is currently signed in
+  managementInfo: {lead: null},    // {name, portfolio, pinHash} for that role
+  overview: {},                    // {sectionKey: {house, section, studentCount, ...}} — all 8 sections
   overviewLoading: false,
+  seniorGender: null,              // 'male' | 'female' — which Senior role is signed in
+  seniorInfo: {lead: null},        // {name, portfolio, pinHash}
+  seniorOverview: {},              // {sectionKey: {...}} — only the 4 sections for seniorGender
+  seniorOverviewLoading: false,
+  seniorTab: 'dashboard',          // dashboard | admit | exeat
+  admitPhoto: null,                // pending photo for the inline Admit Student form
 };
 
 /* =================== HELPERS =================== */
@@ -523,26 +556,30 @@ async function exportHouseDataToExcel(){
   }
 }
 
-function downloadStudentTemplate(){
+function downloadSeniorTemplate(){
   if(typeof XLSX === 'undefined'){
     showToast('Template tool failed to load — check your internet connection and try again.');
     return;
   }
-  const h = getHouse(state.houseId);
-  const sec = sectionMeta(sectionOf(state.houseId));
+  const houseId = document.getElementById('admit-bulk-house').value;
+  if(!houseId){ showToast('Choose a house first.'); return; }
+  const h = getHouse(houseId);
+  const sec = seniorRoleMeta(state.seniorGender);
   const sampleRow = { 'Name': 'e.g. Ama Serwaa', 'Class': 'e.g. SHS 2 Science A', 'Contact': 'e.g. 0241234567', 'NHIS Number': '' };
   const ws = XLSX.utils.json_to_sheet([sampleRow]);
   ws['!cols'] = [{wch:26},{wch:22},{wch:18},{wch:16}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Students');
-  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label}-student-template.xlsx`;
+  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label.replace(/\s+/g,'-')}-student-template.xlsx`;
   XLSX.writeFile(wb, filename);
   showToast('Template downloaded — replace the sample row with real students, keeping the same column headings.');
 }
 
-function handleStudentTemplateUpload(input){
+function handleSeniorTemplateUpload(input){
   const file = input.files[0];
   if(!file) return;
+  const houseId = document.getElementById('admit-bulk-house').value;
+  if(!houseId){ showToast('Choose a house first.'); input.value=''; return; }
   if(typeof XLSX === 'undefined'){
     showToast('Import tool failed to load — check your internet connection and try again.');
     return;
@@ -554,7 +591,9 @@ function handleStudentTemplateUpload(input){
       const wb = XLSX.read(data, { type: 'array' });
       const firstSheetName = wb.SheetNames[0];
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName], { defval: '' });
-      const sec = sectionMeta(sectionOf(state.houseId));
+      const sectionKey = houseId + ':' + state.seniorGender;
+      const existingRes = await safeGet('students:'+sectionKey);
+      const existing = existingRes ? JSON.parse(existingRes.value) : [];
       let imported = 0, skipped = 0;
       rows.forEach(row=>{
         const get = (keys)=>{
@@ -565,20 +604,21 @@ function handleStudentTemplateUpload(input){
         };
         const name = get(['name','full name','student name']);
         if(!name || name.toLowerCase().startsWith('e.g.')){ skipped++; return; }
-        state.students.push({
+        existing.push({
           id: uuid(),
           name,
           className: get(['class','className']),
           contact: get(['contact','phone','phone number','contact number']),
           nhis: get(['nhis number','nhis','nhis no.','nhis no']),
-          gender: sec.label,
+          gender: sectionMeta(state.seniorGender).label,
           photo: null,
           dateAdded: todayISO(),
         });
         imported++;
       });
-      if(imported>0){ render(); await saveStudents(); }
-      showToast(`Imported ${imported} student${imported===1?'':'s'}${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
+      if(imported>0) await persist('students:'+sectionKey, existing);
+      showToast(`Imported ${imported} student${imported===1?'':'s'} into ${getHouse(houseId).name}${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
+      loadSeniorOverview();
     }catch(e){
       console.error('Template import error', e);
       showToast('Could not read that file — make sure it\u2019s the .xlsx template with its column headings unchanged.');
@@ -676,12 +716,13 @@ async function resetHouseLead(){
   render();
 }
 
-/* ---- School-management (all-house overview) access ---- */
-async function selectManagement(){
+/* ---- School-management (all-house, read-only overview) access ---- */
+async function selectManagementRole(roleId){
+  state.managementRole = roleId;
   state.screen = 'loading';
   render();
   try{
-    const res = await safeGet('management-info:'+MANAGEMENT_ID);
+    const res = await safeGet('management-info:'+roleId);
     state.managementInfo = res ? JSON.parse(res.value) : {lead:null};
   }catch(e){ state.managementInfo = {lead:null}; }
   state.pinInput=''; state.authError='';
@@ -693,16 +734,15 @@ async function submitManagementSetup(e){
   e.preventDefault();
   const f = e.target;
   const name = f.mgName.value.trim();
-  const portfolio = f.mgPortfolio.value.trim();
   const pin = f.pin.value.trim();
   const pinConfirm = f.pinConfirm.value.trim();
   if(!name){ state.authError='Enter your full name.'; render(); return; }
-  if(!portfolio){ state.authError='Enter your role/portfolio.'; render(); return; }
   if(!isValidPin(pin)){ state.authError='PIN must be 4–6 digits.'; render(); return; }
   if(pin!==pinConfirm){ state.authError='PINs do not match.'; render(); return; }
-  state.managementInfo.lead = { name, portfolio, pinHash: hashPin(pin, MANAGEMENT_ID) };
+  const portfolio = managementRoleMeta(state.managementRole).label;
+  state.managementInfo.lead = { name, portfolio, pinHash: hashPin(pin, 'management:'+state.managementRole) };
   state.authError='';
-  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
+  await persist('management-info:'+state.managementRole, state.managementInfo);
   state.screen='management-dashboard';
   render();
   showToast('Management account created.');
@@ -715,7 +755,7 @@ function submitManagementLogin(e){
   const pin = f.pin.value.trim();
   const lead = state.managementInfo.lead;
   const nameMatches = enteredName.toLowerCase() === lead.name.trim().toLowerCase();
-  const pinMatches = hashPin(pin, MANAGEMENT_ID) === lead.pinHash;
+  const pinMatches = hashPin(pin, 'management:'+state.managementRole) === lead.pinHash;
   if(nameMatches && pinMatches){
     state.authError=''; state.pinInput='';
     state.screen='management-dashboard';
@@ -728,14 +768,14 @@ function submitManagementLogin(e){
   }
 }
 async function resetManagementLead(){
-  if(!confirm('This clears the management name and PIN so a new account can be created. Continue?')) return;
+  if(!confirm('This clears this role\u2019s name and PIN so a new account can be created. Continue?')) return;
   state.managementInfo.lead = null;
-  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
+  await persist('management-info:'+state.managementRole, state.managementInfo);
   state.authMode='setup'; state.authError=''; state.pinInput='';
   render();
 }
 function exitManagement(){
-  state.screen='select'; state.overview={}; state.managementInfo={lead:null};
+  state.screen='select'; state.overview={}; state.managementInfo={lead:null}; state.managementRole=null;
   state.authMode=null; state.authError=''; state.pinInput='';
   render();
 }
@@ -743,30 +783,119 @@ async function submitManagementLead(e){
   e.preventDefault();
   const f = e.target;
   const name = f.mgName.value.trim();
-  const portfolio = f.mgPortfolio.value.trim();
   let pinHash = state.managementInfo.lead ? state.managementInfo.lead.pinHash : null;
   const newPin = f.newPin.value.trim();
   const newPinConfirm = f.newPinConfirm.value.trim();
   if(newPin || newPinConfirm){
     if(!isValidPin(newPin)){ showToast('New PIN must be 4–6 digits.'); return; }
     if(newPin !== newPinConfirm){ showToast('New PINs do not match.'); return; }
-    pinHash = hashPin(newPin, MANAGEMENT_ID);
+    pinHash = hashPin(newPin, 'management:'+state.managementRole);
   }
-  state.managementInfo.lead = { name, portfolio, pinHash };
+  state.managementInfo.lead = { name, portfolio: managementRoleMeta(state.managementRole).label, pinHash };
   closeModal(); render();
-  await persist('management-info:'+MANAGEMENT_ID, state.managementInfo);
-  showToast(newPin ? 'Management account and PIN updated.' : 'Management account saved.');
+  await persist('management-info:'+state.managementRole, state.managementInfo);
+  showToast(newPin ? 'Account and PIN updated.' : 'Account saved.');
 }
 
-async function loadOverviewData(){
-  state.overviewLoading = true; render();
+/* ---- Senior Housemaster / Senior Housemistress portal ---- */
+async function selectSenior(genderId){
+  state.seniorGender = genderId;
+  state.seniorTab = 'dashboard';
+  state.screen = 'loading';
+  render();
+  try{
+    const res = await safeGet('senior-info:'+genderId);
+    state.seniorInfo = res ? JSON.parse(res.value) : {lead:null};
+  }catch(e){ state.seniorInfo = {lead:null}; }
+  state.pinInput=''; state.authError='';
+  state.authMode = (state.seniorInfo.lead && state.seniorInfo.lead.pinHash) ? 'login' : 'setup';
+  state.screen = 'senior-auth';
+  render();
+}
+async function submitSeniorSetup(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.snName.value.trim();
+  const pin = f.pin.value.trim();
+  const pinConfirm = f.pinConfirm.value.trim();
+  if(!name){ state.authError='Enter your full name.'; render(); return; }
+  if(!isValidPin(pin)){ state.authError='PIN must be 4–6 digits.'; render(); return; }
+  if(pin!==pinConfirm){ state.authError='PINs do not match.'; render(); return; }
+  const portfolio = seniorRoleMeta(state.seniorGender).label;
+  state.seniorInfo.lead = { name, portfolio, pinHash: hashPin(pin, 'senior:'+state.seniorGender) };
+  state.authError='';
+  await persist('senior-info:'+state.seniorGender, state.seniorInfo);
+  state.screen='senior-portal';
+  render();
+  showToast('Account created.');
+  loadSeniorOverview();
+}
+function submitSeniorLogin(e){
+  e.preventDefault();
+  const f = e.target;
+  const enteredName = f.snNameConfirm.value.trim();
+  const pin = f.pin.value.trim();
+  const lead = state.seniorInfo.lead;
+  const nameMatches = enteredName.toLowerCase() === lead.name.trim().toLowerCase();
+  const pinMatches = hashPin(pin, 'senior:'+state.seniorGender) === lead.pinHash;
+  if(nameMatches && pinMatches){
+    state.authError=''; state.pinInput='';
+    state.screen='senior-portal';
+    render();
+    loadSeniorOverview();
+  } else {
+    state.authError = 'Name or PIN doesn\u2019t match our records.';
+    state.pinInput='';
+    render();
+  }
+}
+async function resetSeniorLead(){
+  if(!confirm('This clears this account\u2019s name and PIN so a new one can be created. Continue?')) return;
+  state.seniorInfo.lead = null;
+  await persist('senior-info:'+state.seniorGender, state.seniorInfo);
+  state.authMode='setup'; state.authError=''; state.pinInput='';
+  render();
+}
+function exitSenior(){
+  state.screen='select'; state.seniorOverview={}; state.seniorInfo={lead:null}; state.seniorGender=null;
+  state.authMode=null; state.authError=''; state.pinInput='';
+  render();
+}
+async function submitSeniorLead(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.snName.value.trim();
+  let pinHash = state.seniorInfo.lead ? state.seniorInfo.lead.pinHash : null;
+  const newPin = f.newPin.value.trim();
+  const newPinConfirm = f.newPinConfirm.value.trim();
+  if(newPin || newPinConfirm){
+    if(!isValidPin(newPin)){ showToast('New PIN must be 4–6 digits.'); return; }
+    if(newPin !== newPinConfirm){ showToast('New PINs do not match.'); return; }
+    pinHash = hashPin(newPin, 'senior:'+state.seniorGender);
+  }
+  state.seniorInfo.lead = { name, portfolio: seniorRoleMeta(state.seniorGender).label, pinHash };
+  closeModal(); render();
+  await persist('senior-info:'+state.seniorGender, state.seniorInfo);
+  showToast(newPin ? 'Account and PIN updated.' : 'Account saved.');
+}
+function setSeniorTab(tab){ state.seniorTab = tab; render(); }
+
+async function loadSeniorOverview(){
+  state.seniorOverviewLoading = true; render();
+  const data = await fetchOverviewFor(sectionKeysForGender(state.seniorGender));
+  state.seniorOverview = data;
+  state.seniorOverviewLoading = false;
+  render();
+}
+
+async function fetchOverviewFor(sectionKeys){
   const weekSuffix = isoDate(mostRecentMonday(new Date()));
   const todayIdx = DAY_NAMES.findIndex((d,i)=>{
     const dt = new Date(mostRecentMonday(new Date())); dt.setDate(dt.getDate()+i);
     return isoDate(dt) === todayISO();
   });
   const daysElapsed = todayIdx>=0 ? todayIdx+1 : 7;
-  const results = await Promise.all(allSectionKeys().map(async sectionKey=>{
+  const results = await Promise.all(sectionKeys.map(async sectionKey=>{
     const [studentsRes, exeatsRes, infoRes, attRes] = await Promise.all([
       safeGet('students:'+sectionKey),
       safeGet('exeats:'+sectionKey),
@@ -798,11 +927,16 @@ async function loadOverviewData(){
       flagged,
       attendancePct,
       students,
+      exeats,
     };
   }));
   const overview = {};
   results.forEach(r=>{ overview[r.sectionKey] = r; });
-  state.overview = overview;
+  return overview;
+}
+async function loadOverviewData(){
+  state.overviewLoading = true; render();
+  state.overview = await fetchOverviewFor(allSectionKeys());
   state.overviewLoading = false;
   render();
 }
@@ -948,6 +1082,99 @@ async function deleteExeat(id){
   await saveExeats();
 }
 
+/* ---- Senior portal: admit & assign a student to a house ---- */
+function handleAdmitPhotoInput(input){
+  const file = input.files[0];
+  if(!file) return;
+  resizeImageFile(file, 100, 0.65, (dataUrl)=>{ state.admitPhoto = dataUrl; render(); });
+}
+async function submitAdmitStudent(e){
+  e.preventDefault();
+  const f = e.target;
+  const houseId = f.assignHouse.value;
+  const name = f.name.value.trim();
+  if(!houseId){ showToast('Choose a house to assign this student to.'); return; }
+  if(!name){ showToast('Student name is required.'); return; }
+  const sectionKey = houseId + ':' + state.seniorGender;
+  const student = {
+    id: uuid(),
+    name,
+    contact: f.contact.value.trim(),
+    nhis: f.nhis.value.trim(),
+    className: f.className.value.trim(),
+    gender: sectionMeta(state.seniorGender).label,
+    photo: state.admitPhoto || null,
+    dateAdded: todayISO(),
+  };
+  try{
+    const existingRes = await safeGet('students:'+sectionKey);
+    const existing = existingRes ? JSON.parse(existingRes.value) : [];
+    existing.push(student);
+    await persist('students:'+sectionKey, existing);
+    showToast(`${student.name} admitted to ${getHouse(houseId).name}.`);
+    e.target.reset();
+    state.admitPhoto = null;
+    render();
+    loadSeniorOverview();
+  }catch(err){
+    console.error(err);
+    showToast('Could not save — please try again.');
+  }
+}
+
+/* ---- Senior portal: sign/manage exeats for any student of their gender ---- */
+async function submitSeniorExeatForm(e){
+  e.preventDefault();
+  const f = e.target;
+  const combo = f.studentPick.value;
+  if(!combo){ showToast('Select a student.'); return; }
+  const [sectionKey, studentId] = combo.split('|');
+  const dateOut = f.dateOut.value;
+  const days = parseInt(f.days.value,10);
+  if(!dateOut || !days || days<1){ showToast('Enter a valid date and number of days.'); return; }
+  const expectedReturn = isoDate(new Date(parseISO(dateOut).getTime() + days*86400000));
+  const exeat = {
+    id: uuid(), studentId, dateOut, days, expectedReturn,
+    destination: f.destination.value.trim(),
+    contact: f.contact.value.trim(),
+    reason: f.reason.value.trim(), actualReturn: null,
+    signedBy: state.seniorInfo.lead ? state.seniorInfo.lead.portfolio : 'Senior',
+  };
+  try{
+    const existingRes = await safeGet('exeats:'+sectionKey);
+    const existing = existingRes ? JSON.parse(existingRes.value) : [];
+    existing.unshift(exeat);
+    await persist('exeats:'+sectionKey, existing);
+    closeModal();
+    showToast('Exeat signed and recorded.');
+    loadSeniorOverview();
+  }catch(err){
+    console.error(err);
+    showToast('Could not save — please try again.');
+  }
+}
+async function markSeniorReturned(sectionKey, exeatId){
+  try{
+    const res = await safeGet('exeats:'+sectionKey);
+    const exeats = res ? JSON.parse(res.value) : [];
+    const ex = exeats.find(e=>e.id===exeatId);
+    if(!ex) return;
+    ex.actualReturn = todayISO();
+    await persist('exeats:'+sectionKey, exeats);
+    showToast('Marked as returned.');
+    loadSeniorOverview();
+  }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
+}
+async function deleteSeniorExeat(sectionKey, exeatId){
+  if(!confirm('Delete this exeat record?')) return;
+  try{
+    const res = await safeGet('exeats:'+sectionKey);
+    const exeats = (res ? JSON.parse(res.value) : []).filter(e=>e.id!==exeatId);
+    await persist('exeats:'+sectionKey, exeats);
+    loadSeniorOverview();
+  }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
+}
+
 async function toggleAttendance(studentId, day){
   if(!state.attendance[studentId]) state.attendance[studentId] = {};
   state.attendance[studentId][day] = !state.attendance[studentId][day];
@@ -975,6 +1202,8 @@ function render(){
   else if(state.screen==='auth') screenHtml = renderAuthScreen();
   else if(state.screen==='management-auth') screenHtml = renderManagementAuthScreen();
   else if(state.screen==='management-dashboard') screenHtml = renderManagementDashboard();
+  else if(state.screen==='senior-auth') screenHtml = renderSeniorAuthScreen();
+  else if(state.screen==='senior-portal') screenHtml = renderSeniorPortal();
   else screenHtml = renderWorkspace();
   root.innerHTML = screenHtml + (state.modal ? renderModal() : '');
   attachGlobalHandlers();
@@ -1044,11 +1273,24 @@ function renderSelectScreen(){
         </div>
       `).join('')}
     </div>
-    <div class="management-entry" onclick="selectManagement()">
+    <div class="management-entry">
       <div class="management-entry-icon">&#9737;</div>
-      <div>
+      <div style="flex:1;">
         <div class="management-entry-title">School Management — All-House Overview</div>
-        <div class="management-entry-sub">For the Assistant Headmaster (Domestic) / Senior Housemaster &middot; view every house at a glance</div>
+        <div class="management-entry-sub">Read-only view of every house, for the school's four core management members</div>
+        <div class="role-pill-row">
+          ${MANAGEMENT_ROLES.map(r=>`<button class="role-pill" onclick="selectManagementRole('${r.id}')">${r.label}</button>`).join('')}
+        </div>
+      </div>
+    </div>
+    <div class="management-entry" style="margin-top:14px;">
+      <div class="management-entry-icon">&#9998;</div>
+      <div style="flex:1;">
+        <div class="management-entry-title">Senior Housemaster / Housemistress</div>
+        <div class="management-entry-sub">Admits new students, assigns them to a house, and can sign exeats for any student of their gender</div>
+        <div class="role-pill-row">
+          ${SENIOR_ROLES.map(r=>`<button class="role-pill" onclick="selectSenior('${r.id}')">${r.label}</button>`).join('')}
+        </div>
       </div>
     </div>
     <button class="switch-house-btn" style="width:auto;margin-top:28px;border:none;color:#B9C2B8;text-decoration:underline;background:transparent;" onclick="openModal('school-logo')">Update school logo</button>
@@ -1105,19 +1347,19 @@ function renderAuthScreen(){
 }
 
 function renderManagementAuthScreen(){
+  const role = managementRoleMeta(state.managementRole);
   return `
   <div class="select-screen">
     <div class="crest" style="background:#3A4640;">&#9737;</div>
     ${state.authMode==='setup' ? `
       <div class="select-header">
-        <div class="eyebrow">SCHOOL MANAGEMENT</div>
-        <h1 style="font-size:30px;">Set up management access</h1>
-        <p>No account is on record yet for the all-house overview. Create the account that will monitor every house — you'll choose your own PIN to log in next time.</p>
+        <div class="eyebrow">SCHOOL MANAGEMENT &middot; ${role.label.toUpperCase()}</div>
+        <h1 style="font-size:30px;">Set up access</h1>
+        <p>No account is on record yet for the ${role.label}. Create the account that will monitor every house — you'll choose your own PIN to log in next time.</p>
       </div>
       <div class="panel" style="max-width:380px;width:100%;">
         <form onsubmit="submitManagementSetup(event)">
           <div class="field"><label>Full name</label><input type="text" name="mgName" required autofocus></div>
-          <div class="field"><label>Role / portfolio</label><input type="text" name="mgPortfolio" placeholder="e.g. Assistant Headmaster (Domestic)" required></div>
           <div class="field-row">
             <div class="field"><label>Choose a PIN (4–6 digits)</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
             <div class="field"><label>Confirm PIN</label><input type="password" name="pinConfirm" inputmode="numeric" maxlength="6" required></div>
@@ -1128,9 +1370,9 @@ function renderManagementAuthScreen(){
       </div>
     ` : `
       <div class="select-header">
-        <div class="eyebrow">SCHOOL MANAGEMENT</div>
+        <div class="eyebrow">SCHOOL MANAGEMENT &middot; ${role.label.toUpperCase()}</div>
         <h1 style="font-size:30px;">Welcome back</h1>
-        <p>${state.managementInfo.lead.portfolio} on record: ${state.managementInfo.lead.name}. Enter your name and PIN to continue.</p>
+        <p>On record: ${state.managementInfo.lead.name}. Enter your name and PIN to continue.</p>
       </div>
       <div class="panel" style="max-width:320px;width:100%;">
         <form onsubmit="submitManagementLogin(event)">
@@ -1139,7 +1381,49 @@ function renderManagementAuthScreen(){
           ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
           <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
         </form>
-        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetManagementLead()">Forgot PIN? Reset management account</button>
+        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetManagementLead()">Forgot PIN? Reset this account</button>
+      </div>
+    `}
+    <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Back</button>
+  </div>`;
+}
+
+function renderSeniorAuthScreen(){
+  const role = seniorRoleMeta(state.seniorGender);
+  return `
+  <div class="select-screen">
+    <div class="crest" style="background:#3A4640;">&#9998;</div>
+    ${state.authMode==='setup' ? `
+      <div class="select-header">
+        <div class="eyebrow">${role.label.toUpperCase()}</div>
+        <h1 style="font-size:30px;">Set up access</h1>
+        <p>No ${role.label.toLowerCase()} account is on record yet. Create the account that will admit students and sign exeats across all four houses — you'll choose your own PIN to log in next time.</p>
+      </div>
+      <div class="panel" style="max-width:380px;width:100%;">
+        <form onsubmit="submitSeniorSetup(event)">
+          <div class="field"><label>Full name</label><input type="text" name="snName" required autofocus></div>
+          <div class="field-row">
+            <div class="field"><label>Choose a PIN (4–6 digits)</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+            <div class="field"><label>Confirm PIN</label><input type="password" name="pinConfirm" inputmode="numeric" maxlength="6" required></div>
+          </div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Create account &amp; continue</button>
+        </form>
+      </div>
+    ` : `
+      <div class="select-header">
+        <div class="eyebrow">${role.label.toUpperCase()}</div>
+        <h1 style="font-size:30px;">Welcome back</h1>
+        <p>On record: ${state.seniorInfo.lead.name}. Enter your name and PIN to continue.</p>
+      </div>
+      <div class="panel" style="max-width:320px;width:100%;">
+        <form onsubmit="submitSeniorLogin(event)">
+          <div class="field"><label>Full name</label><input type="text" name="snNameConfirm" required autofocus></div>
+          <div class="field"><label>PIN</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
+        </form>
+        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetSeniorLead()">Forgot PIN? Reset this account</button>
       </div>
     `}
     <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Back</button>
@@ -1165,7 +1449,7 @@ function renderManagementDashboard(){
         <div class="crest-sm" style="background:#3A4640;">&#9737;</div>
         <div class="brand-text">
           <div class="h">School Management</div>
-          <div class="s">All-house overview</div>
+          <div class="s">${managementRoleMeta(state.managementRole).label}</div>
         </div>
       </div>
       <div class="sidebar-spacer"></div>
@@ -1229,6 +1513,212 @@ function renderManagementDashboard(){
       </div>
       `}
     </div>
+  </div>
+  `;
+}
+
+function renderSeniorPortal(){
+  const role = seniorRoleMeta(state.seniorGender);
+  const items = [
+    ['dashboard','Dashboard'],
+    ['admit','Admit & Assign'],
+    ['exeat','Exeat & Movement'],
+  ];
+  return `
+  <div class="workspace">
+    <div class="sidebar">
+      <div class="brand">
+        <div class="crest-sm" style="background:#3A4640;">&#9998;</div>
+        <div class="brand-text">
+          <div class="h">${role.label}</div>
+          <div class="s">${role.short}</div>
+        </div>
+      </div>
+      ${items.map(([key,label])=>`
+        <button class="nav-item ${state.seniorTab===key?'active':''}" onclick="setSeniorTab('${key}')">${label}</button>
+      `).join('')}
+      <div class="sidebar-spacer"></div>
+      ${state.seniorInfo.lead ? `<div style="font-size:11px;color:#9CA79E;margin-bottom:8px;">Signed in as ${state.seniorInfo.lead.name}</div>` : ''}
+      <button class="switch-house-btn" style="border-color:rgba(255,255,255,.28);color:#D6DBD3;margin-bottom:8px;" onclick="loadSeniorOverview()">&#8635; Refresh data</button>
+      <button class="switch-house-btn" style="border-color:rgba(255,255,255,.28);color:#D6DBD3;margin-bottom:8px;" onclick='openModal("senior-lead", ${JSON.stringify(state.seniorInfo.lead||{}).replace(/'/g,"&#39;")})'>Account &amp; PIN</button>
+      <button class="switch-house-btn" onclick="exitSenior()">&larr; Exit portal</button>
+      <div class="sidebar-credit">ANLO SHS HOUSE REGISTER<br>Kaizen Technologies — F. Normanyo</div>
+    </div>
+    <div class="main">
+      ${state.seniorTab==='dashboard' ? renderSeniorDashboardTab() : ''}
+      ${state.seniorTab==='admit' ? renderSeniorAdmitTab() : ''}
+      ${state.seniorTab==='exeat' ? renderSeniorExeatTab() : ''}
+    </div>
+  </div>
+  `;
+}
+
+function renderSeniorDashboardTab(){
+  const role = seniorRoleMeta(state.seniorGender);
+  const sections = Object.values(state.seniorOverview);
+  const totals = {
+    students: sections.reduce((sum,s)=>sum+s.studentCount,0),
+    onExeat: sections.reduce((sum,s)=>sum+s.onExeatCount,0),
+    flagged: sections.reduce((sum,s)=>sum+s.flagged.length,0),
+  };
+  const attPcts = sections.filter(s=>s.attendancePct!=null).map(s=>s.attendancePct);
+  const overallAttendance = attPcts.length ? Math.round(attPcts.reduce((a,b)=>a+b,0)/attPcts.length) : null;
+  const allFlagged = sections.flatMap(s=>s.flagged.map(f=>({...f, house:s.house})))
+    .sort((a,b)=>b._status.daysOverdue - a._status.daysOverdue);
+  return `
+  <div class="page-header">
+    <div><h1>Dashboard</h1><div class="sub">${role.label} &middot; all four houses, ${role.short.toLowerCase()}</div></div>
+  </div>
+  ${state.seniorOverviewLoading ? `<div class="loading-note">Loading records across all four houses\u2026</div>` : `
+  <div class="stat-row">
+    <div class="stat-card"><div class="num">${totals.students}</div><div class="label">Students, this gender</div></div>
+    <div class="stat-card"><div class="num">${totals.onExeat}</div><div class="label">Currently on exeat</div></div>
+    <div class="stat-card"><div class="num">${overallAttendance!=null?overallAttendance+'%':'—'}</div><div class="label">Average attendance this week</div></div>
+    <div class="stat-card flag"><div class="num">${totals.flagged}</div><div class="label">Flagged — overdue return</div></div>
+  </div>
+  ${allFlagged.length>0 ? `
+  <div class="alert-banner">
+    <h3>⚠ Exeat Watch — overdue across all four houses</h3>
+    ${allFlagged.map(f=>`
+      <div class="flag-row">
+        ${photoOrInitials({name:f.studentName, photo:f.studentPhoto}, 'thumb')}
+        <div class="name">${f.studentName} <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">&middot; ${f.house.name}</span></div>
+        <div style="font-size:12px;color:var(--ink-soft);">expected back ${fmtDateFull(f.expectedReturn)}</div>
+        ${callButtonHtml(f.contact, 'Call')}
+        <div class="days">${f._status.daysOverdue} day${f._status.daysOverdue===1?'':'s'} overdue</div>
+      </div>
+    `).join('')}
+  </div>` : `
+  <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
+    <div style="font-size:13.5px;color:var(--accent-dark);">✓ No overdue exeats right now across any house.</div>
+  </div>`}
+  <div class="panel" style="padding:0;">
+    <div style="padding:20px 22px 4px;"><h3 style="margin:0;">Houses at a glance</h3></div>
+    <table>
+      <thead><tr><th>House</th><th>Lead</th><th>Students</th><th>Attendance</th><th>On exeat</th><th>Flagged</th></tr></thead>
+      <tbody>
+      ${HOUSES.map(h=>{
+        const s = state.seniorOverview[h.id+':'+state.seniorGender];
+        if(!s) return '';
+        return `<tr class="${s.flagged.length>0?'flagged':''}">
+          <td>${h.name}</td>
+          <td>${s.leadName ? s.leadName+` <span class="mono" style="color:var(--ink-soft);font-size:10.5px;">(${s.leadPortfolio})</span>` : '<span style="color:var(--ink-soft);">Not set up</span>'}</td>
+          <td class="mono">${s.studentCount}</td>
+          <td class="mono">${s.attendancePct!=null ? s.attendancePct+'%' : '—'}</td>
+          <td class="mono">${s.onExeatCount}</td>
+          <td>${s.flagged.length>0 ? `<span class="badge overdue">${s.flagged.length}</span>` : `<span class="badge returned">0</span>`}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>
+  </div>
+  `}
+  `;
+}
+
+function renderSeniorAdmitTab(){
+  const role = seniorRoleMeta(state.seniorGender);
+  return `
+  <div class="page-header">
+    <div><h1>Admit &amp; Assign</h1><div class="sub">Add a new ${role.short.split(' ')[0].toLowerCase()} student and assign them to a house</div></div>
+  </div>
+  <div class="panel">
+    <h3>Admit one student</h3>
+    <form onsubmit="submitAdmitStudent(event)">
+      <div class="photo-upload">
+        ${state.admitPhoto ? `<img class="photo-preview" src="${state.admitPhoto}">` : `<div class="photo-preview" style="display:flex;align-items:center;justify-content:center;font-family:Fraunces,serif;color:var(--ink-soft);">?</div>`}
+        <div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <label class="btn secondary small" style="cursor:pointer;margin:0;">
+              🖼 Choose photo
+              <input type="file" accept="image/*" onchange="handleAdmitPhotoInput(this)" style="display:none;">
+            </label>
+            <label class="btn secondary small" style="cursor:pointer;margin:0;">
+              📷 Take photo
+              <input type="file" accept="image/*" capture="environment" onchange="handleAdmitPhotoInput(this)" style="display:none;">
+            </label>
+          </div>
+          <div style="font-size:11px;color:var(--ink-soft);margin-top:6px;">Optional, but helps housemasters identify the student later.</div>
+        </div>
+      </div>
+      <div class="field"><label>Full name</label><input type="text" name="name" required></div>
+      <div class="field-row">
+        <div class="field"><label>Class</label><input type="text" name="className" placeholder="e.g. SHS 1 Science A"></div>
+        <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no."></div>
+      </div>
+      <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No."></div>
+      <div class="field">
+        <label>Assign to house</label>
+        <select name="assignHouse" required>
+          <option value="">Select house…</option>
+          ${HOUSES.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button type="submit" class="btn">Admit &amp; assign student</button>
+      </div>
+    </form>
+  </div>
+  <div class="panel">
+    <h3>Admit many at once</h3>
+    <div class="field"><label>House to assign this batch to</label>
+      <select id="admit-bulk-house">
+        <option value="">Select house…</option>
+        ${HOUSES.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn secondary small" onclick="downloadSeniorTemplate()">⬇ Download template</button>
+      <label class="btn secondary small" style="cursor:pointer;margin:0;">
+        ⬆ Upload filled template
+        <input type="file" accept=".xlsx,.xls" onchange="handleSeniorTemplateUpload(this)" style="display:none;">
+      </label>
+    </div>
+    <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">Choose the house above before downloading or uploading — every student in the file is assigned to that one house.</div>
+  </div>
+  `;
+}
+
+function renderSeniorExeatTab(){
+  const role = seniorRoleMeta(state.seniorGender);
+  const sections = Object.values(state.seniorOverview);
+  const rows = sections.flatMap(s=>(s.exeats||[]).map(e=>({...e, house:s.house, sectionKey:s.sectionKey, _status:computeExeatStatus(e)})))
+    .sort((a,b)=> (a.dateOut < b.dateOut ? 1 : -1));
+  return `
+  <div class="page-header">
+    <div><h1>Exeat &amp; Movement</h1><div class="sub">Sign and track exeats for any ${role.short.split(' ')[0].toLowerCase()} student, in any house</div></div>
+    <button class="btn" onclick="openModal('senior-exeat')">+ Sign new exeat</button>
+  </div>
+  <div class="panel" style="padding:0;">
+    ${rows.length===0 ? `<div class="empty-state">No exeat records yet.</div>` : `
+    <table>
+      <thead><tr><th>Student</th><th>House</th><th>Date out</th><th>Days</th><th>Expected back</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      ${rows.map(e=>{
+        const s = state.seniorOverview[e.sectionKey];
+        const student = s ? s.students.find(st=>st.id===e.studentId) : null;
+        const st = e._status;
+        let badge = '';
+        if(st.status==='overdue') badge = `<span class="badge overdue">${st.daysOverdue}d overdue</span>`;
+        else if(st.status==='due') badge = `<span class="badge due">Due today</span>`;
+        else if(st.status==='out') badge = `<span class="badge out">Out &middot; ${st.daysLeft}d left</span>`;
+        else if(st.status==='late') badge = `<span class="badge late">Returned late</span>`;
+        else badge = `<span class="badge returned">Returned ${fmtDateFull(e.actualReturn)}</span>`;
+        return `<tr class="${st.status==='overdue'?'flagged':''}">
+          <td>${student?student.name:'Unknown'}</td>
+          <td>${e.house.name}</td>
+          <td class="mono">${fmtDateFull(e.dateOut)}</td>
+          <td class="mono">${e.days}</td>
+          <td class="mono">${fmtDateFull(e.expectedReturn)}</td>
+          <td>${badge}</td>
+          <td class="row-actions">
+            ${!e.actualReturn ? `<button class="icon-btn" onclick="markSeniorReturned('${e.sectionKey}','${e.id}')">Mark returned</button>` : ''}
+            <button class="icon-btn" onclick="deleteSeniorExeat('${e.sectionKey}','${e.id}')">Delete</button>
+          </td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`}
   </div>
   `;
 }
@@ -1359,20 +1849,15 @@ function renderStudents(h){
   return `
   <div class="page-header">
     <div><h1>Students</h1><div class="sub">${state.students.length} student${state.students.length===1?'':'s'} registered in ${h.name}</div></div>
-    <button class="btn" onclick="openModal('student')">+ Add student</button>
+  </div>
+  <div class="panel" style="background:var(--accent-tint);border-color:transparent;margin-bottom:16px;">
+    <div style="font-size:12.5px;color:var(--accent-dark);">New students are admitted and assigned to houses by the Senior Housemaster / Housemistress — they'll appear here automatically once assigned. You can still edit details or remove a student below.</div>
   </div>
   <div class="toolbar">
     <input id="student-search-input" class="search-input" placeholder="Search by name, class, contact or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
-    <div style="display:flex;gap:8px;">
-      <button class="btn secondary small" onclick="downloadStudentTemplate()">⬇ Download template</button>
-      <label class="btn secondary small" style="cursor:pointer;margin:0;">
-        ⬆ Upload filled template
-        <input type="file" accept=".xlsx,.xls" onchange="handleStudentTemplateUpload(this)" style="display:none;">
-      </label>
-    </div>
   </div>
   <div class="panel" style="padding:0;">
-    ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students yet. Click "Add student" to register the first one.' : 'No students match your search.'}</div>` : `
+    ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students assigned to this section yet.' : 'No students match your search.'}</div>` : `
     <table>
       <thead><tr><th></th><th>Name</th><th>Class</th><th>Contact</th><th>NHIS No.</th><th></th><th></th></tr></thead>
       <tbody>
@@ -1535,6 +2020,8 @@ function renderModal(){
   if(type==='house-logo') return renderHouseLogoModal(data);
   if(type==='management-lead') return renderManagementLeadModal(data);
   if(type==='section-roster') return renderSectionRosterModal(data);
+  if(type==='senior-lead') return renderSeniorLeadModal(data);
+  if(type==='senior-exeat') return renderSeniorExeatModal(data);
   return '';
 }
 
@@ -1706,10 +2193,9 @@ function renderManagementLeadModal(d){
   <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
     <div class="modal">
       <button class="close-x" onclick="closeModal()">&times;</button>
-      <h2>Management account</h2>
+      <h2>${managementRoleMeta(state.managementRole).label} — account</h2>
       <form onsubmit="submitManagementLead(event)">
         <div class="field"><label>Full name</label><input type="text" name="mgName" value="${escapeAttr(d.name||'')}" required></div>
-        <div class="field"><label>Role / portfolio</label><input type="text" name="mgPortfolio" placeholder="e.g. Senior Housemaster" value="${escapeAttr(d.portfolio||'')}" required></div>
         <div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px;">
           <label>${d.pinHash ? 'Change login PIN (leave blank to keep current)' : 'Set a login PIN (4–6 digits)'}</label>
           <div class="field-row">
@@ -1758,6 +2244,65 @@ function renderSectionRosterModal(d){
   </div>`;
 }
 
+function renderSeniorLeadModal(d){
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>${seniorRoleMeta(state.seniorGender).label} — account</h2>
+      <form onsubmit="submitSeniorLead(event)">
+        <div class="field"><label>Full name</label><input type="text" name="snName" value="${escapeAttr(d.name||'')}" required></div>
+        <div class="field" style="border-top:1px solid var(--line);padding-top:14px;margin-top:4px;">
+          <label>${d.pinHash ? 'Change login PIN (leave blank to keep current)' : 'Set a login PIN (4–6 digits)'}</label>
+          <div class="field-row">
+            <input type="password" name="newPin" inputmode="numeric" maxlength="6" placeholder="New PIN">
+            <input type="password" name="newPinConfirm" inputmode="numeric" maxlength="6" placeholder="Confirm new PIN">
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+function renderSeniorExeatModal(){
+  const sections = Object.values(state.seniorOverview);
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>Sign exeat</h2>
+      <form onsubmit="submitSeniorExeatForm(event)">
+        <div class="field"><label>Student</label>
+          <select name="studentPick" required>
+            <option value="">Select student…</option>
+            ${sections.map(s=>`
+              <optgroup label="${s.house.name}">
+                ${s.students.map(st=>`<option value="${s.sectionKey}|${st.id}">${st.name}${st.className?' — '+st.className:''}</option>`).join('')}
+              </optgroup>
+            `).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Date going home</label><input type="date" name="dateOut" value="${todayISO()}" required></div>
+          <div class="field"><label>Number of days</label><input type="number" name="days" min="1" value="3" required></div>
+        </div>
+        <div class="field"><label>Destination</label><input type="text" name="destination" placeholder="e.g. Home — Anloga, or a hospital / relative's address"></div>
+        <div class="field"><label>Contact number (parent / guardian)</label><input type="tel" name="contact" placeholder="e.g. 024 123 4567"></div>
+        <div style="font-size:11px;color:var(--ink-soft);margin:-8px 0 14px;">Used to call quickly if this student doesn't report back on time.</div>
+        <div class="field"><label>Reason (optional)</label><textarea name="reason" rows="2" placeholder="e.g. family visit, medical appointment"></textarea></div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Sign &amp; save exeat</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
 function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function attachGlobalHandlers(){ /* using inline handlers; nothing extra needed */ }
 
@@ -1772,11 +2317,17 @@ window.submitAuthSetup=submitAuthSetup; window.submitAuthLogin=submitAuthLogin; 
 window.handleSchoolLogoInput=handleSchoolLogoInput; window.handleHouseLogoInput=handleHouseLogoInput;
 window.submitSchoolLogo=submitSchoolLogo; window.submitHouseLogo=submitHouseLogo;
 window.exportHouseDataToExcel=exportHouseDataToExcel;
-window.downloadStudentTemplate=downloadStudentTemplate; window.handleStudentTemplateUpload=handleStudentTemplateUpload;
-window.selectManagement=selectManagement; window.submitManagementSetup=submitManagementSetup;
+window.downloadSeniorTemplate=downloadSeniorTemplate; window.handleSeniorTemplateUpload=handleSeniorTemplateUpload;
+window.selectManagementRole=selectManagementRole; window.submitManagementSetup=submitManagementSetup;
 window.submitManagementLogin=submitManagementLogin; window.resetManagementLead=resetManagementLead;
 window.exitManagement=exitManagement; window.submitManagementLead=submitManagementLead;
 window.loadOverviewData=loadOverviewData;
+window.selectSenior=selectSenior; window.submitSeniorSetup=submitSeniorSetup;
+window.submitSeniorLogin=submitSeniorLogin; window.resetSeniorLead=resetSeniorLead;
+window.exitSenior=exitSenior; window.submitSeniorLead=submitSeniorLead; window.setSeniorTab=setSeniorTab;
+window.loadSeniorOverview=loadSeniorOverview; window.handleAdmitPhotoInput=handleAdmitPhotoInput;
+window.submitAdmitStudent=submitAdmitStudent; window.submitSeniorExeatForm=submitSeniorExeatForm;
+window.markSeniorReturned=markSeniorReturned; window.deleteSeniorExeat=deleteSeniorExeat;
 
 init();
 </script>
