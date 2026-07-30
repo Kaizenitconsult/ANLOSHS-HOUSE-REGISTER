@@ -241,6 +241,39 @@ const SENIOR_ROLES = [
 ];
 function seniorRoleMeta(genderId){ return SENIOR_ROLES.find(r=>r.id===genderId) || SENIOR_ROLES[0]; }
 
+// Student status and academic year. ANLOSHS runs a 3-year SHS program, so a student
+// admitted in academic year "2023/2024" is expected to complete after the 2025/2026
+// year — the Completions tool below uses this to flag students for archiving.
+const STUDENT_STATUS_OPTIONS = ['Boarding', 'Day'];
+const YEARS_TO_COMPLETION = 3;
+function currentAcademicYearStart(){
+  const now = new Date();
+  // Ghanaian school years run September–July; before September, we're still in the
+  // academic year that started the previous calendar year.
+  return now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
+}
+function academicYearLabel(startYear){ return startYear + '/' + (startYear + 1); }
+function academicYearOptions(){
+  const cur = currentAcademicYearStart();
+  const opts = [];
+  for(let y = cur + 1; y >= cur - 4; y--){ opts.push(academicYearLabel(y)); }
+  return opts;
+}
+function academicYearStartFromLabel(label){
+  if(!label) return null;
+  const n = parseInt(String(label).split('/')[0], 10);
+  return isNaN(n) ? null : n;
+}
+function yearsElapsedSinceAdmission(academicYear){
+  const start = academicYearStartFromLabel(academicYear);
+  if(start==null) return null;
+  return currentAcademicYearStart() - start;
+}
+function isDueForCompletion(academicYear){
+  const elapsed = yearsElapsedSinceAdmission(academicYear);
+  return elapsed!=null && elapsed >= YEARS_TO_COMPLETION;
+}
+
 /* =================== FIREBASE SETUP =================== */
 // This app stores all its data (students, attendance, exeats, PINs) in a Firebase
 // Firestore database, so it works as a real, independently-hosted web app.
@@ -303,8 +336,15 @@ let state = {
   seniorInfo: {lead: null},        // {name, portfolio, pinHash}
   seniorOverview: {},              // {sectionKey: {...}} — only the 4 sections for seniorGender
   seniorOverviewLoading: false,
-  seniorTab: 'dashboard',          // dashboard | admit | exeat
+  seniorTab: 'dashboard',          // dashboard | admit | exeat | completions
   admitPhoto: null,                // pending photo for the inline Admit Student form
+  completionCandidates: [],        // students flagged as due to complete, from the last scan
+  completionSelected: {},          // {studentId: bool} — which candidates are checked for archiving
+  completionsScanned: false,
+  completionsLoading: false,
+  archiveRows: [],                 // loaded archive records, across all 4 houses for this gender
+  archiveLoaded: false,
+  archiveLoading: false,
 };
 
 /* =================== HELPERS =================== */
@@ -473,10 +513,11 @@ async function exportHouseDataToExcel(){
     const wb = XLSX.utils.book_new();
 
     const studentsRows = state.students.map(s=>({
-      'Name': s.name, 'Class': s.className||'', 'Contact': s.contact||'',
+      'Name': s.name, 'Class/Program': s.className||'', 'Status': s.status||'', 'Academic Year': s.academicYear||'',
+      'Contact': s.contact||'', 'Parent/Guardian Name': s.parentName||'',
       'NHIS Number': s.nhis||'', 'Gender': s.gender||'', 'Date added': s.dateAdded||'',
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class':'','Contact':'','NHIS Number':'','Gender':'','Date added':''}]), 'Students');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class/Program':'','Status':'','Academic Year':'','Contact':'','Parent/Guardian Name':'','NHIS Number':'','Gender':'','Date added':''}]), 'Students');
 
     const exeatRows = state.exeats.map(e=>{
       const s = state.students.find(st=>st.id===e.studentId);
@@ -487,13 +528,13 @@ async function exportHouseDataToExcel(){
       else if(st.status==='due') statusLabel = 'Due today';
       else if(st.status==='late') statusLabel = 'Returned late';
       return {
-        'Student': s ? s.name : 'Unknown', 'Class': s ? (s.className||'') : '',
+        'Student': s ? s.name : 'Unknown', 'Class/Program': s ? (s.className||'') : '',
         'Destination': e.destination||'', 'Contact': e.contact||'',
         'Date out': e.dateOut, 'Days': e.days, 'Expected return': e.expectedReturn,
         'Actual return': e.actualReturn||'', 'Status': statusLabel, 'Reason': e.reason||'',
       };
     });
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exeatRows.length?exeatRows:[{'Student':'','Class':'','Destination':'','Contact':'','Date out':'','Days':'','Expected return':'','Actual return':'','Status':'','Reason':''}]), 'Exeats');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(exeatRows.length?exeatRows:[{'Student':'','Class/Program':'','Destination':'','Contact':'','Date out':'','Days':'','Expected return':'','Actual return':'','Status':'','Reason':''}]), 'Exeats');
 
     const teamRows = [];
     if(state.houseInfo.housemaster) teamRows.push({'Name': state.houseInfo.housemaster.name, 'Role': state.houseInfo.housemaster.portfolio});
@@ -535,7 +576,7 @@ async function exportHouseDataToExcel(){
           const rec = weekData[s.id] || {};
           const presentCount = DAY_NAMES.filter(d=>rec[d]).length;
           attendanceRows.push({
-            'Week starting': weekSuffix, 'Student': s.name, 'Class': s.className||'',
+            'Week starting': weekSuffix, 'Student': s.name, 'Class/Program': s.className||'',
             'Mon': rec.Mon?'Present':'', 'Tue': rec.Tue?'Present':'', 'Wed': rec.Wed?'Present':'',
             'Thu': rec.Thu?'Present':'', 'Fri': rec.Fri?'Present':'', 'Sat': rec.Sat?'Present':'', 'Sun': rec.Sun?'Present':'',
             'Days present': presentCount, 'Week %': Math.round((presentCount/7)*100) + '%',
@@ -544,7 +585,7 @@ async function exportHouseDataToExcel(){
       });
       attendanceRows.sort((a,b)=> a['Week starting'] < b['Week starting'] ? -1 : 1);
     }catch(e){ console.error('attendance export error', e); }
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attendanceRows.length?attendanceRows:[{'Week starting':'','Student':'','Class':'','Mon':'','Tue':'','Wed':'','Thu':'','Fri':'','Sat':'','Sun':'','Days present':'','Week %':''}]), 'Attendance');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(attendanceRows.length?attendanceRows:[{'Week starting':'','Student':'','Class/Program':'','Mon':'','Tue':'','Wed':'','Thu':'','Fri':'','Sat':'','Sun':'','Days present':'','Week %':''}]), 'Attendance');
 
     const sec = sectionMeta(sectionOf(state.houseId));
     const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label}-backup-${todayISO()}.xlsx`;
@@ -563,16 +604,18 @@ function downloadSeniorTemplate(){
   }
   const houseId = document.getElementById('admit-bulk-house').value;
   if(!houseId){ showToast('Choose a house first.'); return; }
+  const academicYear = document.getElementById('admit-bulk-academic-year').value;
+  if(!academicYear){ showToast('Choose an academic year first.'); return; }
   const h = getHouse(houseId);
   const sec = seniorRoleMeta(state.seniorGender);
-  const sampleRow = { 'Name': 'e.g. Ama Serwaa', 'Class': 'e.g. SHS 2 Science A', 'Contact': 'e.g. 0241234567', 'NHIS Number': '' };
+  const sampleRow = { 'Name': 'e.g. Ama Serwaa', 'Class/Program': 'e.g. SHS 2 Science A', 'Contact': 'e.g. 0241234567', 'Parent/Guardian Name': 'e.g. Mr. Kofi Serwaa', 'NHIS Number': '', 'Status (Boarding/Day)': 'Boarding' };
   const ws = XLSX.utils.json_to_sheet([sampleRow]);
-  ws['!cols'] = [{wch:26},{wch:22},{wch:18},{wch:16}];
+  ws['!cols'] = [{wch:26},{wch:22},{wch:16},{wch:24},{wch:16},{wch:20}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Students');
-  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label.replace(/\s+/g,'-')}-student-template.xlsx`;
+  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label.replace(/\s+/g,'-')}-${academicYear.replace('/','-')}-student-template.xlsx`;
   XLSX.writeFile(wb, filename);
-  showToast('Template downloaded — replace the sample row with real students, keeping the same column headings.');
+  showToast(`Template downloaded for academic year ${academicYear} — replace the sample row with real students, keeping the same column headings.`);
 }
 
 function handleSeniorTemplateUpload(input){
@@ -580,6 +623,8 @@ function handleSeniorTemplateUpload(input){
   if(!file) return;
   const houseId = document.getElementById('admit-bulk-house').value;
   if(!houseId){ showToast('Choose a house first.'); input.value=''; return; }
+  const academicYear = document.getElementById('admit-bulk-academic-year').value;
+  if(!academicYear){ showToast('Choose an academic year first.'); input.value=''; return; }
   if(typeof XLSX === 'undefined'){
     showToast('Import tool failed to load — check your internet connection and try again.');
     return;
@@ -604,12 +649,17 @@ function handleSeniorTemplateUpload(input){
         };
         const name = get(['name','full name','student name']);
         if(!name || name.toLowerCase().startsWith('e.g.')){ skipped++; return; }
+        const statusRaw = get(['status (boarding/day)','status','boarding/day']);
+        const status = STUDENT_STATUS_OPTIONS.find(o=>o.toLowerCase()===statusRaw.toLowerCase()) || '';
         existing.push({
           id: uuid(),
           name,
-          className: get(['class','className']),
+          className: get(['class/program','class','classname']),
           contact: get(['contact','phone','phone number','contact number']),
+          parentName: get(['parent/guardian name','parent name','guardian name','parent/guardian']),
           nhis: get(['nhis number','nhis','nhis no.','nhis no']),
+          status,
+          academicYear,
           gender: sectionMeta(state.seniorGender).label,
           photo: null,
           dateAdded: todayISO(),
@@ -617,7 +667,7 @@ function handleSeniorTemplateUpload(input){
         imported++;
       });
       if(imported>0) await persist('students:'+sectionKey, existing);
-      showToast(`Imported ${imported} student${imported===1?'':'s'} into ${getHouse(houseId).name}${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
+      showToast(`Imported ${imported} student${imported===1?'':'s'} into ${getHouse(houseId).name} (${academicYear})${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
       loadSeniorOverview();
     }catch(e){
       console.error('Template import error', e);
@@ -859,6 +909,8 @@ async function resetSeniorLead(){
 function exitSenior(){
   state.screen='select'; state.seniorOverview={}; state.seniorInfo={lead:null}; state.seniorGender=null;
   state.authMode=null; state.authError=''; state.pinInput='';
+  state.completionCandidates=[]; state.completionSelected={}; state.completionsScanned=false;
+  state.archiveRows=[]; state.archiveLoaded=false;
   render();
 }
 async function submitSeniorLead(e){
@@ -955,6 +1007,9 @@ async function submitStudent(e){
     contact: f.contact.value.trim(),
     nhis: f.nhis.value.trim(),
     className: f.className.value.trim(),
+    parentName: f.parentName.value.trim(),
+    status: f.status.value,
+    academicYear: f.academicYear.value,
     gender: data.gender || sec.label,
     photo: data.photo || null,
     dateAdded: data.dateAdded || todayISO(),
@@ -1102,6 +1157,9 @@ async function submitAdmitStudent(e){
     contact: f.contact.value.trim(),
     nhis: f.nhis.value.trim(),
     className: f.className.value.trim(),
+    parentName: f.parentName.value.trim(),
+    status: f.status.value,
+    academicYear: f.academicYear.value,
     gender: sectionMeta(state.seniorGender).label,
     photo: state.admitPhoto || null,
     dateAdded: todayISO(),
@@ -1173,6 +1231,126 @@ async function deleteSeniorExeat(sectionKey, exeatId){
     await persist('exeats:'+sectionKey, exeats);
     loadSeniorOverview();
   }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
+}
+
+/* ---- Senior portal: completions & archive ---- */
+async function scanForCompletions(){
+  state.completionsLoading = true; render();
+  const candidates = [];
+  const selected = {};
+  try{
+    await Promise.all(HOUSES.map(async h=>{
+      const sectionKey = h.id + ':' + state.seniorGender;
+      const res = await safeGet('students:'+sectionKey);
+      const students = res ? JSON.parse(res.value) : [];
+      students.forEach(s=>{
+        if(isDueForCompletion(s.academicYear)){
+          candidates.push({ ...s, sectionKey, houseName: h.name });
+          selected[s.id] = true;
+        }
+      });
+    }));
+  }catch(e){ console.error('completion scan error', e); showToast('Could not scan — please try again.'); }
+  state.completionCandidates = candidates;
+  state.completionSelected = selected;
+  state.completionsScanned = true;
+  state.completionsLoading = false;
+  render();
+}
+function toggleCompletionSelection(studentId){
+  state.completionSelected[studentId] = !state.completionSelected[studentId];
+  render();
+}
+async function archiveSelectedCompletions(){
+  const toArchive = state.completionCandidates.filter(c=>state.completionSelected[c.id]);
+  if(toArchive.length===0){ showToast('No students selected.'); return; }
+  if(!confirm(`Archive ${toArchive.length} student(s)? They'll be removed from their house's active roster and moved to the archive.`)) return;
+
+  try{
+    // Group by house so each house's active list and archive are only read/written once.
+    const bySection = {};
+    toArchive.forEach(c=>{ (bySection[c.sectionKey] = bySection[c.sectionKey] || []).push(c); });
+
+    const completedDate = todayISO();
+    const archivedBy = state.seniorInfo.lead ? state.seniorInfo.lead.name : '';
+    const backupRows = [];
+
+    for(const sectionKey of Object.keys(bySection)){
+      const toRemoveIds = new Set(bySection[sectionKey].map(c=>c.id));
+      const activeRes = await safeGet('students:'+sectionKey);
+      const active = activeRes ? JSON.parse(activeRes.value) : [];
+      const remaining = active.filter(s=>!toRemoveIds.has(s.id));
+      await persist('students:'+sectionKey, remaining);
+
+      const archiveRes = await safeGet('students-archive:'+sectionKey);
+      const archive = archiveRes ? JSON.parse(archiveRes.value) : [];
+      bySection[sectionKey].forEach(c=>{
+        const record = { ...c, completedDate, archivedBy };
+        delete record.sectionKey; delete record.houseName;
+        archive.push(record);
+        backupRows.push({
+          'Name': c.name, 'House': c.houseName, 'Class/Program': c.className||'',
+          'Status': c.status||'', 'Academic Year': c.academicYear||'',
+          'Contact': c.contact||'', 'Parent/Guardian Name': c.parentName||'', 'NHIS Number': c.nhis||'',
+          'Completed Date': completedDate,
+        });
+      });
+      await persist('students-archive:'+sectionKey, archive);
+    }
+
+    if(typeof XLSX !== 'undefined'){
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(backupRows), 'Completed Students');
+      const filename = `ANLOSHS-${seniorRoleMeta(state.seniorGender).label.replace(/\s+/g,'-')}-completed-${completedDate}.xlsx`;
+      XLSX.writeFile(wb, filename);
+    } else {
+      showToast('Archived, but the backup download tool didn\u2019t load — use "Load archive" and "Download full archive" to get a copy later.');
+    }
+
+    showToast(`${toArchive.length} student(s) archived and backup downloaded.`);
+    state.completionCandidates = [];
+    state.completionSelected = {};
+    state.completionsScanned = false;
+    render();
+    loadSeniorOverview();
+  }catch(err){
+    console.error(err);
+    showToast('Could not complete the archive — please try again.');
+  }
+}
+async function loadSeniorArchive(){
+  state.archiveLoading = true; render();
+  const rows = [];
+  try{
+    await Promise.all(HOUSES.map(async h=>{
+      const sectionKey = h.id + ':' + state.seniorGender;
+      const res = await safeGet('students-archive:'+sectionKey);
+      const archived = res ? JSON.parse(res.value) : [];
+      archived.forEach(s=>rows.push({ ...s, houseName: h.name }));
+    }));
+  }catch(e){ console.error('archive load error', e); showToast('Could not load the archive — please try again.'); }
+  rows.sort((a,b)=> (b.completedDate||'') < (a.completedDate||'') ? -1 : 1);
+  state.archiveRows = rows;
+  state.archiveLoaded = true;
+  state.archiveLoading = false;
+  render();
+}
+function exportSeniorArchive(){
+  if(typeof XLSX === 'undefined'){
+    showToast('Export tool failed to load — check your internet connection and try again.');
+    return;
+  }
+  if(state.archiveRows.length===0){ showToast('No archived students to export yet.'); return; }
+  const rows = state.archiveRows.map(c=>({
+    'Name': c.name, 'House': c.houseName, 'Class/Program': c.className||'',
+    'Status': c.status||'', 'Academic Year': c.academicYear||'',
+    'Contact': c.contact||'', 'Parent/Guardian Name': c.parentName||'', 'NHIS Number': c.nhis||'',
+    'Completed Date': c.completedDate||'',
+  }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), 'Completed Students');
+  const filename = `ANLOSHS-${seniorRoleMeta(state.seniorGender).label.replace(/\s+/g,'-')}-archive-${todayISO()}.xlsx`;
+  XLSX.writeFile(wb, filename);
 }
 
 async function toggleAttendance(studentId, day){
@@ -1523,6 +1701,7 @@ function renderSeniorPortal(){
     ['dashboard','Dashboard'],
     ['admit','Admit & Assign'],
     ['exeat','Exeat & Movement'],
+    ['completions','Completions & Archive'],
   ];
   return `
   <div class="workspace">
@@ -1548,6 +1727,7 @@ function renderSeniorPortal(){
       ${state.seniorTab==='dashboard' ? renderSeniorDashboardTab() : ''}
       ${state.seniorTab==='admit' ? renderSeniorAdmitTab() : ''}
       ${state.seniorTab==='exeat' ? renderSeniorExeatTab() : ''}
+      ${state.seniorTab==='completions' ? renderSeniorCompletionsTab() : ''}
     </div>
   </div>
   `;
@@ -1643,10 +1823,27 @@ function renderSeniorAdmitTab(){
       </div>
       <div class="field"><label>Full name</label><input type="text" name="name" required></div>
       <div class="field-row">
-        <div class="field"><label>Class</label><input type="text" name="className" placeholder="e.g. SHS 1 Science A"></div>
+        <div class="field"><label>Class/Program</label><input type="text" name="className" placeholder="e.g. SHS 1 Science A"></div>
         <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no."></div>
       </div>
-      <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No."></div>
+      <div class="field-row">
+        <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name"></div>
+        <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No."></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Status</label>
+          <select name="status" required>
+            <option value="">Select…</option>
+            ${STUDENT_STATUS_OPTIONS.map(o=>`<option value="${o}">${o}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field"><label>Academic Year</label>
+          <select name="academicYear" required>
+            <option value="">Select…</option>
+            ${academicYearOptions().map((o,i)=>`<option value="${o}" ${i===1?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+      </div>
       <div class="field">
         <label>Assign to house</label>
         <select name="assignHouse" required>
@@ -1661,11 +1858,19 @@ function renderSeniorAdmitTab(){
   </div>
   <div class="panel">
     <h3>Admit many at once</h3>
-    <div class="field"><label>House to assign this batch to</label>
-      <select id="admit-bulk-house">
-        <option value="">Select house…</option>
-        ${HOUSES.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')}
-      </select>
+    <div class="field-row">
+      <div class="field"><label>House to assign this batch to</label>
+        <select id="admit-bulk-house">
+          <option value="">Select house…</option>
+          ${HOUSES.map(h=>`<option value="${h.id}">${h.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field"><label>Academic year for this batch</label>
+        <select id="admit-bulk-academic-year">
+          <option value="">Select…</option>
+          ${academicYearOptions().map((o,i)=>`<option value="${o}" ${i===1?'selected':''}>${o}</option>`).join('')}
+        </select>
+      </div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
       <button class="btn secondary small" onclick="downloadSeniorTemplate()">⬇ Download template</button>
@@ -1674,7 +1879,7 @@ function renderSeniorAdmitTab(){
         <input type="file" accept=".xlsx,.xls" onchange="handleSeniorTemplateUpload(this)" style="display:none;">
       </label>
     </div>
-    <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">Choose the house above before downloading or uploading — every student in the file is assigned to that one house.</div>
+    <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">Choose the house and academic year above before downloading or uploading — every student in the file is assigned to that house and stamped with that academic year.</div>
   </div>
   `;
 }
@@ -1719,6 +1924,80 @@ function renderSeniorExeatTab(){
       }).join('')}
       </tbody>
     </table>`}
+  </div>
+  `;
+}
+
+function renderSeniorCompletionsTab(){
+  const role = seniorRoleMeta(state.seniorGender);
+  const candidates = state.completionCandidates;
+  const selectedCount = Object.values(state.completionSelected).filter(Boolean).length;
+  return `
+  <div class="page-header">
+    <div><h1>Completions &amp; Archive</h1><div class="sub">Move students who have finished the ${YEARS_TO_COMPLETION}-year program out of the active roster</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>Find students due to complete</h3>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+      Checks every ${role.short.toLowerCase()} student across all four houses and flags anyone admitted ${YEARS_TO_COMPLETION} or more academic years ago (based on the Academic Year set when they were admitted).
+    </div>
+    <button class="btn secondary small" onclick="scanForCompletions()">${state.completionsLoading ? 'Scanning…' : '\u21bb Scan all houses'}</button>
+
+    ${state.completionsScanned ? (candidates.length===0 ? `
+      <div class="empty-state" style="text-align:left;padding:16px 0 0;">No students currently due to complete.</div>
+    ` : `
+      <div class="panel" style="background:var(--accent-tint);border-color:transparent;margin:16px 0 0;padding:12px 16px;">
+        <div style="font-size:12.5px;color:var(--accent-dark);">${candidates.length} student${candidates.length===1?'':'s'} found &middot; ${selectedCount} selected for archiving. Untick anyone who hasn't actually finished (e.g. repeated a year).</div>
+      </div>
+      <table style="margin-top:12px;">
+        <thead><tr><th></th><th>Name</th><th>House</th><th>Class/Program</th><th>Academic Year</th><th>Years since admission</th></tr></thead>
+        <tbody>
+        ${candidates.map(c=>`
+          <tr>
+            <td><input type="checkbox" class="att-check" ${state.completionSelected[c.id]?'checked':''} onchange="toggleCompletionSelection('${c.id}')"></td>
+            <td>${c.name}</td>
+            <td>${c.houseName}</td>
+            <td>${c.className||'—'}</td>
+            <td class="mono">${c.academicYear||'—'}</td>
+            <td class="mono">${yearsElapsedSinceAdmission(c.academicYear)}</td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:16px;">
+        <button class="btn" ${selectedCount===0?'disabled':''} onclick="archiveSelectedCompletions()">Archive ${selectedCount||''} selected &amp; download backup</button>
+      </div>
+    `) : ''}
+  </div>
+
+  <div class="panel">
+    <h3>Archive &mdash; completed students</h3>
+    <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:14px;">
+      Students archived here are kept completely separate from the active roster — they no longer appear in attendance, exeat, or dashboard counts for any house, but their records are preserved and can be re-downloaded anytime.
+    </div>
+    <button class="btn secondary small" onclick="loadSeniorArchive()">${state.archiveLoading ? 'Loading…' : '\u21bb Load archive'}</button>
+    ${state.archiveLoaded ? (state.archiveRows.length===0 ? `
+      <div class="empty-state" style="text-align:left;padding:16px 0 0;">No archived students yet.</div>
+    ` : `
+      <div style="margin-top:14px;">
+        <button class="btn secondary small" onclick="exportSeniorArchive()">⬇ Download full archive (Excel)</button>
+      </div>
+      <table style="margin-top:12px;">
+        <thead><tr><th>Name</th><th>House</th><th>Class/Program</th><th>Academic Year</th><th>Completed</th></tr></thead>
+        <tbody>
+        ${state.archiveRows.map(c=>`
+          <tr>
+            <td>${c.name}</td>
+            <td>${c.houseName}</td>
+            <td>${c.className||'—'}</td>
+            <td class="mono">${c.academicYear||'—'}</td>
+            <td class="mono">${fmtDateFull(c.completedDate)}</td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `) : ''}
   </div>
   `;
 }
@@ -1844,7 +2123,7 @@ function photoOrInitials(student, cls){
 
 function renderStudents(h){
   const q = state.studentSearch.trim().toLowerCase();
-  const list = state.students.filter(s=> !q || s.name.toLowerCase().includes(q) || (s.className||'').toLowerCase().includes(q) || (s.contact||'').toLowerCase().includes(q) || (s.nhis||'').toLowerCase().includes(q));
+  const list = state.students.filter(s=> !q || s.name.toLowerCase().includes(q) || (s.className||'').toLowerCase().includes(q) || (s.contact||'').toLowerCase().includes(q) || (s.nhis||'').toLowerCase().includes(q) || (s.parentName||'').toLowerCase().includes(q));
   const overdueIds = new Set(flaggedExeats().map(f=>f.studentId));
   return `
   <div class="page-header">
@@ -1854,19 +2133,22 @@ function renderStudents(h){
     <div style="font-size:12.5px;color:var(--accent-dark);">New students are admitted and assigned to houses by the Senior Housemaster / Housemistress — they'll appear here automatically once assigned. You can still edit details or remove a student below.</div>
   </div>
   <div class="toolbar">
-    <input id="student-search-input" class="search-input" placeholder="Search by name, class, contact or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
+    <input id="student-search-input" class="search-input" placeholder="Search by name, class/program, contact, parent or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
   </div>
   <div class="panel" style="padding:0;">
     ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students assigned to this section yet.' : 'No students match your search.'}</div>` : `
     <table>
-      <thead><tr><th></th><th>Name</th><th>Class</th><th>Contact</th><th>NHIS No.</th><th></th><th></th></tr></thead>
+      <thead><tr><th></th><th>Name</th><th>Class/Program</th><th>Status</th><th>Academic Year</th><th>Contact</th><th>Parent/Guardian</th><th>NHIS No.</th><th></th><th></th></tr></thead>
       <tbody>
       ${list.map(s=>`
         <tr class="${overdueIds.has(s.id)?'flagged':''}">
           <td>${photoOrInitials(s,'')}</td>
           <td>${s.name} ${overdueIds.has(s.id)?'<span class="badge overdue" style="margin-left:6px;">flagged</span>':''}</td>
           <td>${s.className||'—'}</td>
+          <td>${s.status||'—'}</td>
+          <td class="mono">${s.academicYear||'—'}${isDueForCompletion(s.academicYear)?' <span class="badge overdue">due</span>':''}</td>
           <td class="mono">${s.contact||'—'}</td>
+          <td>${s.parentName||'—'}</td>
           <td class="mono">${s.nhis||'—'}</td>
           <td class="row-actions">
             <button class="icon-btn" onclick='openModal("student", ${JSON.stringify(s).replace(/'/g,"&#39;")})'>Edit</button>
@@ -2098,10 +2380,27 @@ function renderStudentModal(d){
         </div>
         <div class="field"><label>Full name</label><input type="text" name="name" value="${escapeAttr(d.name||'')}" required></div>
         <div class="field-row">
-          <div class="field"><label>Class</label><input type="text" name="className" placeholder="e.g. SHS 2 Science A" value="${escapeAttr(d.className||'')}"></div>
+          <div class="field"><label>Class/Program</label><input type="text" name="className" placeholder="e.g. SHS 2 Science A" value="${escapeAttr(d.className||'')}"></div>
           <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no." value="${escapeAttr(d.contact||'')}"></div>
         </div>
-        <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No." value="${escapeAttr(d.nhis||'')}"></div>
+        <div class="field-row">
+          <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name" value="${escapeAttr(d.parentName||'')}"></div>
+          <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No." value="${escapeAttr(d.nhis||'')}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Status</label>
+            <select name="status">
+              <option value="" ${!d.status?'selected':''}>Select…</option>
+              ${STUDENT_STATUS_OPTIONS.map(o=>`<option value="${o}" ${d.status===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+          <div class="field"><label>Academic Year</label>
+            <select name="academicYear">
+              <option value="" ${!d.academicYear?'selected':''}>Select…</option>
+              ${academicYearOptions().map(o=>`<option value="${o}" ${d.academicYear===o?'selected':''}>${o}</option>`).join('')}
+            </select>
+          </div>
+        </div>
         <div class="modal-actions">
           <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
           <button type="submit" class="btn">Save student</button>
@@ -2225,13 +2524,15 @@ function renderSectionRosterModal(d){
       </div>
       ${s.students.length===0 ? `<div class="empty-state">No students registered in this section yet.</div>` : `
       <table>
-        <thead><tr><th></th><th>Name</th><th>Class</th><th>Contact</th></tr></thead>
+        <thead><tr><th></th><th>Name</th><th>Class/Program</th><th>Status</th><th>Academic Year</th><th>Contact</th></tr></thead>
         <tbody>
         ${s.students.map(st=>`
           <tr>
             <td>${photoOrInitials(st,'')}</td>
             <td>${st.name}</td>
             <td>${st.className||'—'}</td>
+            <td>${st.status||'—'}</td>
+            <td class="mono">${st.academicYear||'—'}${isDueForCompletion(st.academicYear)?' <span class="badge overdue">due</span>':''}</td>
             <td class="mono">${st.contact||'—'}</td>
           </tr>
         `).join('')}
@@ -2328,6 +2629,9 @@ window.exitSenior=exitSenior; window.submitSeniorLead=submitSeniorLead; window.s
 window.loadSeniorOverview=loadSeniorOverview; window.handleAdmitPhotoInput=handleAdmitPhotoInput;
 window.submitAdmitStudent=submitAdmitStudent; window.submitSeniorExeatForm=submitSeniorExeatForm;
 window.markSeniorReturned=markSeniorReturned; window.deleteSeniorExeat=deleteSeniorExeat;
+window.scanForCompletions=scanForCompletions; window.toggleCompletionSelection=toggleCompletionSelection;
+window.archiveSelectedCompletions=archiveSelectedCompletions; window.loadSeniorArchive=loadSeniorArchive;
+window.exportSeniorArchive=exportSeniorArchive;
 
 init();
 </script>
