@@ -274,6 +274,21 @@ function isDueForCompletion(academicYear){
   return elapsed!=null && elapsed >= YEARS_TO_COMPLETION;
 }
 
+// "Remove student" is a soft delete: rather than disappearing outright, the removed
+// record moves here instead of vanishing outright, so a mistaken deletion can be
+// undone. Entries older than the retention window are pruned automatically whenever
+// the trash is read or written.
+const TRASH_RETENTION_DAYS = 30;
+function pruneTrash(rows){
+  const cutoff = Date.now() - TRASH_RETENTION_DAYS*24*60*60*1000;
+  return (rows||[]).filter(r=> r.deletedDate && new Date(r.deletedDate+'T00:00:00').getTime() >= cutoff);
+}
+function daysLeftInTrash(deletedDate){
+  const deleted = new Date(deletedDate+'T00:00:00').getTime();
+  const elapsedDays = Math.floor((Date.now()-deleted)/(24*60*60*1000));
+  return Math.max(0, TRASH_RETENTION_DAYS - elapsedDays);
+}
+
 /* =================== FIREBASE SETUP =================== */
 // This app stores all its data (students, attendance, exeats, PINs) in a Firebase
 // Firestore database, so it works as a real, independently-hosted web app.
@@ -325,6 +340,14 @@ let state = {
   weekStart: mostRecentMonday(new Date()),
   attendance: {},        // {studentId: {Mon:bool,...}}
   studentSearch: '',
+  exeatSearch: '',
+  seniorExeatTableSearch: '',
+  exeatStudentSearch: '',
+  seniorExeatSearch: '',
+  trashRows: [],
+  trashLoaded: false,
+  trashLoading: false,
+  trashPanelOpen: false,
   modal: null,           // {type:'student'|'staff'|'housemaster'|'exeat'|'school-logo'|'house-logo'|'change-pin'|'management-lead'|'section-roster'|'senior-lead'|'admit-student', data:{...}}
   schoolLogo: null,      // dataURL, falls back to DEFAULT_SCHOOL_LOGO
   houseLogos: {},        // {houseId: dataURL}
@@ -1023,11 +1046,61 @@ async function submitStudent(e){
   showToast('Student saved.');
 }
 async function removeStudent(id){
-  if(!confirm('Remove this student from the house? This cannot be undone.')) return;
+  if(!confirm(`Remove this student from the house? They'll be kept in "Recently removed" for ${TRASH_RETENTION_DAYS} days in case this was a mistake, then deleted for good.`)) return;
+  const student = state.students.find(s=>s.id===id);
+  if(!student) return;
   state.students = state.students.filter(s=>s.id!==id);
   render();
   await saveStudents();
-  showToast('Student removed.');
+  try{
+    const res = await safeGet('students-trash:'+state.houseId);
+    const trash = pruneTrash(res ? JSON.parse(res.value) : []);
+    trash.push({ ...student, deletedDate: todayISO() });
+    await persist('students-trash:'+state.houseId, trash);
+  }catch(e){ console.error('trash save error', e); }
+  showToast('Student removed — recoverable from "Recently removed" for 30 days.');
+}
+async function loadTrash(){
+  state.trashLoading = true; render();
+  try{
+    const res = await safeGet('students-trash:'+state.houseId);
+    const raw = res ? JSON.parse(res.value) : [];
+    const pruned = pruneTrash(raw);
+    state.trashRows = pruned;
+    // Save back immediately if pruning actually removed any expired entries, so the
+    // stored list doesn't grow forever with rows nobody will ever see again.
+    if(raw.length !== pruned.length){
+      await persist('students-trash:'+state.houseId, pruned);
+    }
+  }catch(e){ console.error('trash load error', e); state.trashRows = []; }
+  state.trashLoaded = true;
+  state.trashLoading = false;
+  render();
+}
+function toggleTrashPanel(){
+  state.trashPanelOpen = !state.trashPanelOpen;
+  if(state.trashPanelOpen && !state.trashLoaded) loadTrash();
+  else render();
+}
+async function restoreStudent(id){
+  try{
+    const trashRes = await safeGet('students-trash:'+state.houseId);
+    const trash = pruneTrash(trashRes ? JSON.parse(trashRes.value) : []);
+    const idx = trash.findIndex(s=>s.id===id);
+    if(idx<0){ showToast('That record is no longer available.'); return; }
+    const restored = { ...trash[idx] };
+    delete restored.deletedDate;
+    trash.splice(idx,1);
+    await persist('students-trash:'+state.houseId, trash);
+    const activeRes = await safeGet('students:'+state.houseId);
+    const active = activeRes ? JSON.parse(activeRes.value) : [];
+    active.push(restored);
+    await persist('students:'+state.houseId, active);
+    state.students = active;
+    state.trashRows = trash;
+    render();
+    showToast(`${restored.name} restored to the active roster.`);
+  }catch(e){ console.error('restore error', e); showToast('Could not restore — please try again.'); }
 }
 function handlePhotoInput(input){
   const file = input.files[0];
@@ -1824,10 +1897,10 @@ function renderSeniorAdmitTab(){
       <div class="field"><label>Full name</label><input type="text" name="name" required></div>
       <div class="field-row">
         <div class="field"><label>Class/Program</label><input type="text" name="className" placeholder="e.g. SHS 1 Science A"></div>
-        <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no."></div>
+        <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name"></div>
+        <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no."></div>
         <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No."></div>
       </div>
       <div class="field-row">
@@ -1887,21 +1960,25 @@ function renderSeniorAdmitTab(){
 function renderSeniorExeatTab(){
   const role = seniorRoleMeta(state.seniorGender);
   const sections = Object.values(state.seniorOverview);
-  const rows = sections.flatMap(s=>(s.exeats||[]).map(e=>({...e, house:s.house, sectionKey:s.sectionKey, _status:computeExeatStatus(e)})))
+  const q = state.seniorExeatTableSearch.trim().toLowerCase();
+  const rows = sections.flatMap(s=>(s.exeats||[]).map(e=>({...e, house:s.house, sectionKey:s.sectionKey, _status:computeExeatStatus(e), _student: s.students.find(st=>st.id===e.studentId)})))
+    .filter(e=> !q || (e._student && e._student.name.toLowerCase().includes(q)))
     .sort((a,b)=> (a.dateOut < b.dateOut ? 1 : -1));
   return `
   <div class="page-header">
     <div><h1>Exeat &amp; Movement</h1><div class="sub">Sign and track exeats for any ${role.short.split(' ')[0].toLowerCase()} student, in any house</div></div>
     <button class="btn" onclick="openModal('senior-exeat')">+ Sign new exeat</button>
   </div>
+  <div class="toolbar">
+    <input id="senior-exeat-search-input" class="search-input" placeholder="Search by student name…" value="${escapeAttr(state.seniorExeatTableSearch)}" oninput="state.seniorExeatTableSearch=this.value; render();">
+  </div>
   <div class="panel" style="padding:0;">
-    ${rows.length===0 ? `<div class="empty-state">No exeat records yet.</div>` : `
+    ${rows.length===0 ? `<div class="empty-state">${sections.every(s=>(s.exeats||[]).length===0) ? 'No exeat records yet.' : 'No exeat records match that name.'}</div>` : `
     <table>
       <thead><tr><th>Student</th><th>House</th><th>Date out</th><th>Days</th><th>Expected back</th><th>Status</th><th></th></tr></thead>
       <tbody>
       ${rows.map(e=>{
-        const s = state.seniorOverview[e.sectionKey];
-        const student = s ? s.students.find(st=>st.id===e.studentId) : null;
+        const student = e._student;
         const st = e._status;
         let badge = '';
         if(st.status==='overdue') badge = `<span class="badge overdue">${st.daysOverdue}d overdue</span>`;
@@ -2134,11 +2211,12 @@ function renderStudents(h){
   </div>
   <div class="toolbar">
     <input id="student-search-input" class="search-input" placeholder="Search by name, class/program, contact, parent or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
+    <button class="btn secondary small" onclick="toggleTrashPanel()">🗑 Recently removed${state.trashLoaded && state.trashRows.length>0 ? ` (${state.trashRows.length})` : ''}</button>
   </div>
   <div class="panel" style="padding:0;">
     ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students assigned to this section yet.' : 'No students match your search.'}</div>` : `
     <table>
-      <thead><tr><th></th><th>Name</th><th>Class/Program</th><th>Status</th><th>Academic Year</th><th>Contact</th><th>Parent/Guardian</th><th>NHIS No.</th><th></th><th></th></tr></thead>
+      <thead><tr><th></th><th>Name</th><th>Class/Program</th><th>Status</th><th>Academic Year</th><th>Parent/Guardian</th><th>Contact</th><th>NHIS No.</th><th></th><th></th></tr></thead>
       <tbody>
       ${list.map(s=>`
         <tr class="${overdueIds.has(s.id)?'flagged':''}">
@@ -2147,8 +2225,8 @@ function renderStudents(h){
           <td>${s.className||'—'}</td>
           <td>${s.status||'—'}</td>
           <td class="mono">${s.academicYear||'—'}${isDueForCompletion(s.academicYear)?' <span class="badge overdue">due</span>':''}</td>
-          <td class="mono">${s.contact||'—'}</td>
           <td>${s.parentName||'—'}</td>
+          <td class="mono">${s.contact||'—'}</td>
           <td class="mono">${s.nhis||'—'}</td>
           <td class="row-actions">
             <button class="icon-btn" onclick='openModal("student", ${JSON.stringify(s).replace(/'/g,"&#39;")})'>Edit</button>
@@ -2159,6 +2237,29 @@ function renderStudents(h){
       </tbody>
     </table>`}
   </div>
+  ${state.trashPanelOpen ? `
+  <div class="panel" style="margin-top:16px;">
+    <h3>Recently removed <span style="font-weight:400;color:var(--ink-soft);font-size:12px;">— kept for ${TRASH_RETENTION_DAYS} days, then deleted for good</span></h3>
+    ${state.trashLoading ? `<div class="loading-note">Loading…</div>` : (state.trashRows.length===0 ? `
+      <div class="empty-state" style="text-align:left;padding:12px 0 0;">Nothing here right now.</div>
+    ` : `
+      <table>
+        <thead><tr><th>Name</th><th>Class/Program</th><th>Removed on</th><th>Days left</th><th></th></tr></thead>
+        <tbody>
+        ${state.trashRows.map(s=>`
+          <tr>
+            <td>${s.name}</td>
+            <td>${s.className||'—'}</td>
+            <td class="mono">${fmtDateFull(s.deletedDate)}</td>
+            <td class="mono">${daysLeftInTrash(s.deletedDate)}</td>
+            <td><button class="icon-btn" onclick="restoreStudent('${s.id}')">Restore</button></td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table>
+    `)}
+  </div>
+  ` : ''}
   `;
 }
 
@@ -2206,19 +2307,25 @@ function renderAttendance(h){
 }
 
 function renderExeat(h){
-  const rows = state.exeats.map(e=>({...e, _status: computeExeatStatus(e)}));
+  const q = state.exeatSearch.trim().toLowerCase();
+  const rows = state.exeats
+    .map(e=>({...e, _status: computeExeatStatus(e), _student: state.students.find(st=>st.id===e.studentId)}))
+    .filter(e=> !q || (e._student && e._student.name.toLowerCase().includes(q)));
   return `
   <div class="page-header">
     <div><h1>Exeat &amp; Movement</h1><div class="sub">Track students who have gone home and when they are due back</div></div>
     <button class="btn" onclick="openModal('exeat')" ${state.students.length===0?'disabled title="Add students first"':''}>+ Record exeat</button>
   </div>
+  <div class="toolbar">
+    <input id="exeat-search-input" class="search-input" placeholder="Search by student name…" value="${escapeAttr(state.exeatSearch)}" oninput="state.exeatSearch=this.value; render();">
+  </div>
   <div class="panel" style="padding:0;">
-    ${rows.length===0 ? `<div class="empty-state">No exeat records yet.</div>` : `
+    ${rows.length===0 ? `<div class="empty-state">${state.exeats.length===0 ? 'No exeat records yet.' : 'No exeat records match that name.'}</div>` : `
     <table>
       <thead><tr><th>Student</th><th>Destination</th><th>Date out</th><th>Days</th><th>Expected back</th><th>Status</th><th></th><th></th></tr></thead>
       <tbody>
       ${rows.map(e=>{
-        const s = state.students.find(st=>st.id===e.studentId);
+        const s = e._student;
         const st = e._status;
         let badge = '';
         if(st.status==='overdue') badge = `<span class="badge overdue">${st.daysOverdue}d overdue</span>`;
@@ -2381,10 +2488,10 @@ function renderStudentModal(d){
         <div class="field"><label>Full name</label><input type="text" name="name" value="${escapeAttr(d.name||'')}" required></div>
         <div class="field-row">
           <div class="field"><label>Class/Program</label><input type="text" name="className" placeholder="e.g. SHS 2 Science A" value="${escapeAttr(d.className||'')}"></div>
-          <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no." value="${escapeAttr(d.contact||'')}"></div>
+          <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name" value="${escapeAttr(d.parentName||'')}"></div>
         </div>
         <div class="field-row">
-          <div class="field"><label>Parent/Guardian Name</label><input type="text" name="parentName" placeholder="Full name" value="${escapeAttr(d.parentName||'')}"></div>
+          <div class="field"><label>Contact</label><input type="text" name="contact" placeholder="Parent/guardian phone no." value="${escapeAttr(d.contact||'')}"></div>
           <div class="field"><label>NHIS Number</label><input type="text" name="nhis" placeholder="National Health Insurance No." value="${escapeAttr(d.nhis||'')}"></div>
         </div>
         <div class="field-row">
@@ -2458,17 +2565,24 @@ function renderStaffModal(d){
 }
 
 function renderExeatModal(d){
+  const q = (state.exeatStudentSearch||'').trim().toLowerCase();
+  const filtered = state.students.filter(s=> !q || s.name.toLowerCase().includes(q));
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
     <div class="modal">
       <button class="close-x" onclick="closeModal()">&times;</button>
       <h2>Record exeat</h2>
       <form onsubmit="submitExeat(event)">
-        <div class="field"><label>Student</label>
+        <div class="field">
+          <label>Find student</label>
+          <input type="text" id="exeat-student-search" placeholder="Type a name to filter the list below…" value="${escapeAttr(state.exeatStudentSearch||'')}" oninput="state.exeatStudentSearch=this.value; render();" style="width:100%;padding:9px 11px;border:1px solid var(--line-strong);border-radius:4px;font-size:13.5px;background:var(--paper);margin-bottom:10px;">
+        </div>
+        <div class="field"><label>Student${q?` (${filtered.length} match${filtered.length===1?'':'es'})`:''}</label>
           <select name="studentId" required>
             <option value="">Select student…</option>
-            ${state.students.map(s=>`<option value="${s.id}">${s.name}${s.className?' — '+s.className:''}</option>`).join('')}
+            ${filtered.map(s=>`<option value="${s.id}">${s.name}${s.className?' — '+s.className:''}</option>`).join('')}
           </select>
+          ${q && filtered.length===0 ? `<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;">No student matches "${escapeAttr(state.exeatStudentSearch)}".</div>` : ''}
         </div>
         <div class="field-row">
           <div class="field"><label>Date going home</label><input type="date" name="dateOut" value="${todayISO()}" required></div>
@@ -2571,21 +2685,31 @@ function renderSeniorLeadModal(d){
 
 function renderSeniorExeatModal(){
   const sections = Object.values(state.seniorOverview);
+  const q = (state.seniorExeatSearch||'').trim().toLowerCase();
+  const filteredSections = sections
+    .map(s=>({ ...s, students: s.students.filter(st=> !q || st.name.toLowerCase().includes(q)) }))
+    .filter(s=>s.students.length>0);
+  const totalMatches = filteredSections.reduce((sum,s)=>sum+s.students.length,0);
   return `
   <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
     <div class="modal">
       <button class="close-x" onclick="closeModal()">&times;</button>
       <h2>Sign exeat</h2>
       <form onsubmit="submitSeniorExeatForm(event)">
-        <div class="field"><label>Student</label>
+        <div class="field">
+          <label>Find student</label>
+          <input type="text" id="senior-exeat-student-search" placeholder="Type a name to filter across all four houses…" value="${escapeAttr(state.seniorExeatSearch||'')}" oninput="state.seniorExeatSearch=this.value; render();" style="width:100%;padding:9px 11px;border:1px solid var(--line-strong);border-radius:4px;font-size:13.5px;background:var(--paper);margin-bottom:10px;">
+        </div>
+        <div class="field"><label>Student${q?` (${totalMatches} match${totalMatches===1?'':'es'})`:''}</label>
           <select name="studentPick" required>
             <option value="">Select student…</option>
-            ${sections.map(s=>`
+            ${filteredSections.map(s=>`
               <optgroup label="${s.house.name}">
                 ${s.students.map(st=>`<option value="${s.sectionKey}|${st.id}">${st.name}${st.className?' — '+st.className:''}</option>`).join('')}
               </optgroup>
             `).join('')}
           </select>
+          ${q && totalMatches===0 ? `<div style="font-size:11.5px;color:var(--ink-soft);margin-top:6px;">No student matches "${escapeAttr(state.seniorExeatSearch)}" in any house.</div>` : ''}
         </div>
         <div class="field-row">
           <div class="field"><label>Date going home</label><input type="date" name="dateOut" value="${todayISO()}" required></div>
