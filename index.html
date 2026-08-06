@@ -701,6 +701,80 @@ function handleSeniorTemplateUpload(input){
   reader.readAsArrayBuffer(file);
 }
 
+function downloadHouseTemplate(){
+  if(typeof XLSX === 'undefined'){
+    showToast('Template tool failed to load — check your internet connection and try again.');
+    return;
+  }
+  const academicYear = document.getElementById('house-bulk-academic-year').value;
+  if(!academicYear){ showToast('Choose an academic year first.'); return; }
+  const h = getHouse(state.houseId);
+  const sec = sectionMeta(sectionOf(state.houseId));
+  const sampleRow = { 'Name': 'e.g. Ama Serwaa', 'Class/Program': 'e.g. SHS 2 Science A', 'Contact': 'e.g. 0241234567', 'Parent/Guardian Name': 'e.g. Mr. Kofi Serwaa', 'NHIS Number': '', 'Status (Boarding/Day)': 'Boarding' };
+  const ws = XLSX.utils.json_to_sheet([sampleRow]);
+  ws['!cols'] = [{wch:26},{wch:22},{wch:16},{wch:24},{wch:16},{wch:20}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Students');
+  const filename = `ANLOSHS-${h.name.replace(/\s+/g,'-')}-${sec.label.replace(/\s+/g,'-')}-${academicYear.replace('/','-')}-student-template.xlsx`;
+  XLSX.writeFile(wb, filename);
+  showToast(`Template downloaded for academic year ${academicYear} — replace the sample row with real students, keeping the same column headings.`);
+}
+
+function handleHouseTemplateUpload(input){
+  const file = input.files[0];
+  if(!file) return;
+  const academicYear = document.getElementById('house-bulk-academic-year').value;
+  if(!academicYear){ showToast('Choose an academic year first.'); input.value=''; return; }
+  if(typeof XLSX === 'undefined'){
+    showToast('Import tool failed to load — check your internet connection and try again.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = async function(ev){
+    try{
+      const data = new Uint8Array(ev.target.result);
+      const wb = XLSX.read(data, { type: 'array' });
+      const firstSheetName = wb.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[firstSheetName], { defval: '' });
+      let imported = 0, skipped = 0;
+      rows.forEach(row=>{
+        const get = (keys)=>{
+          for(const k of Object.keys(row)){
+            if(keys.includes(k.trim().toLowerCase())) return String(row[k]).trim();
+          }
+          return '';
+        };
+        const name = get(['name','full name','student name']);
+        if(!name || name.toLowerCase().startsWith('e.g.')){ skipped++; return; }
+        const statusRaw = get(['status (boarding/day)','status','boarding/day']);
+        const status = STUDENT_STATUS_OPTIONS.find(o=>o.toLowerCase()===statusRaw.toLowerCase()) || '';
+        state.students.push({
+          id: uuid(),
+          name,
+          className: get(['class/program','class','classname']),
+          contact: get(['contact','phone','phone number','contact number']),
+          parentName: get(['parent/guardian name','parent name','guardian name','parent/guardian']),
+          nhis: get(['nhis number','nhis','nhis no.','nhis no']),
+          status,
+          academicYear,
+          gender: sectionMeta(sectionOf(state.houseId)).label,
+          comment: '',
+          photo: null,
+          dateAdded: todayISO(),
+        });
+        imported++;
+      });
+      if(imported>0){ render(); await saveStudents(); }
+      showToast(`Imported ${imported} student${imported===1?'':'s'} (${academicYear})${skipped?`, skipped ${skipped} row(s) without a name`:''}.`);
+    }catch(e){
+      console.error('Template import error', e);
+      showToast('Could not read that file — make sure it\u2019s the .xlsx template with its column headings unchanged.');
+    }
+    input.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
+
 /* =================== ACTIONS =================== */
 async function loadGlobalAssets(){
   try{ const r = await safeGet('school-logo'); state.schoolLogo = r ? JSON.parse(r.value) : null; }
@@ -2215,6 +2289,23 @@ function renderStudents(h){
     <input id="student-search-input" class="search-input" placeholder="Search by name, class/program, contact, parent or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
     <button class="btn secondary small" onclick="toggleTrashPanel()">🗑 Recently removed${state.trashLoaded && state.trashRows.length>0 ? ` (${state.trashRows.length})` : ''}</button>
   </div>
+  <div class="panel">
+    <h3>Add many at once</h3>
+    <div class="field" style="max-width:260px;"><label>Academic year for this batch</label>
+      <select id="house-bulk-academic-year">
+        <option value="">Select…</option>
+        ${academicYearOptions().map((o,i)=>`<option value="${o}" ${i===1?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+      <button class="btn secondary small" onclick="downloadHouseTemplate()">⬇ Download template</button>
+      <label class="btn secondary small" style="cursor:pointer;margin:0;">
+        ⬆ Upload filled template
+        <input type="file" accept=".xlsx,.xls" onchange="handleHouseTemplateUpload(this)" style="display:none;">
+      </label>
+    </div>
+    <div style="font-size:11px;color:var(--ink-soft);margin-top:8px;">Choose the academic year above before downloading or uploading — every student in the file is added to ${h.name} and stamped with that year.</div>
+  </div>
   <div class="panel" style="padding:0;">
     ${list.length===0 ? `<div class="empty-state">${state.students.length===0 ? 'No students assigned to this section yet.' : 'No students match your search.'}</div>` : `
     <table>
@@ -2755,6 +2846,7 @@ window.handleSchoolLogoInput=handleSchoolLogoInput; window.handleHouseLogoInput=
 window.submitSchoolLogo=submitSchoolLogo; window.submitHouseLogo=submitHouseLogo;
 window.exportHouseDataToExcel=exportHouseDataToExcel;
 window.downloadSeniorTemplate=downloadSeniorTemplate; window.handleSeniorTemplateUpload=handleSeniorTemplateUpload;
+window.downloadHouseTemplate=downloadHouseTemplate; window.handleHouseTemplateUpload=handleHouseTemplateUpload;
 window.selectManagementRole=selectManagementRole; window.submitManagementSetup=submitManagementSetup;
 window.submitManagementLogin=submitManagementLogin; window.resetManagementLead=resetManagementLead;
 window.exitManagement=exitManagement; window.submitManagementLead=submitManagementLead;
