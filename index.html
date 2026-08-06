@@ -538,9 +538,9 @@ async function exportHouseDataToExcel(){
     const studentsRows = state.students.map(s=>({
       'Name': s.name, 'Class/Program': s.className||'', 'Status': s.status||'', 'Academic Year': s.academicYear||'',
       'Contact': s.contact||'', 'Parent/Guardian Name': s.parentName||'',
-      'NHIS Number': s.nhis||'', 'Gender': s.gender||'', 'Date added': s.dateAdded||'',
+      'NHIS Number': s.nhis||'', 'Gender': s.gender||'', 'Comment/Notes': s.comment||'', 'Date added': s.dateAdded||'',
     }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class/Program':'','Status':'','Academic Year':'','Contact':'','Parent/Guardian Name':'','NHIS Number':'','Gender':'','Date added':''}]), 'Students');
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(studentsRows.length?studentsRows:[{'Name':'','Class/Program':'','Status':'','Academic Year':'','Contact':'','Parent/Guardian Name':'','NHIS Number':'','Gender':'','Comment/Notes':'','Date added':''}]), 'Students');
 
     const exeatRows = state.exeats.map(e=>{
       const s = state.students.find(st=>st.id===e.studentId);
@@ -1033,7 +1033,8 @@ async function submitStudent(e){
     parentName: f.parentName.value.trim(),
     status: f.status.value,
     academicYear: f.academicYear.value,
-    gender: data.gender || sec.label,
+    gender: f.gender.value || data.gender || sec.label,
+    comment: f.comment.value.trim(),
     photo: data.photo || null,
     dateAdded: data.dateAdded || todayISO(),
   };
@@ -2205,9 +2206,10 @@ function renderStudents(h){
   return `
   <div class="page-header">
     <div><h1>Students</h1><div class="sub">${state.students.length} student${state.students.length===1?'':'s'} registered in ${h.name}</div></div>
+    <button class="btn" onclick="openModal('student')">+ Add student</button>
   </div>
   <div class="panel" style="background:var(--accent-tint);border-color:transparent;margin-bottom:16px;">
-    <div style="font-size:12.5px;color:var(--accent-dark);">New students are admitted and assigned to houses by the Senior Housemaster / Housemistress — they'll appear here automatically once assigned. You can still edit details or remove a student below.</div>
+    <div style="font-size:12.5px;color:var(--accent-dark);">Add a student directly here, or the Senior Housemaster / Housemistress can admit and assign one to this house from their portal — either way, they'll show up in this list.</div>
   </div>
   <div class="toolbar">
     <input id="student-search-input" class="search-input" placeholder="Search by name, class/program, contact, parent or NHIS no." value="${escapeAttr(state.studentSearch)}" oninput="state.studentSearch=this.value; render();">
@@ -2221,7 +2223,7 @@ function renderStudents(h){
       ${list.map(s=>`
         <tr class="${overdueIds.has(s.id)?'flagged':''}">
           <td>${photoOrInitials(s,'')}</td>
-          <td>${s.name} ${overdueIds.has(s.id)?'<span class="badge overdue" style="margin-left:6px;">flagged</span>':''}</td>
+          <td>${s.name} ${overdueIds.has(s.id)?'<span class="badge overdue" style="margin-left:6px;">flagged</span>':''}${s.comment?`<span class="badge due" style="margin-left:6px;" title="${escapeAttr(s.comment)}">📝 note</span>`:''}</td>
           <td>${s.className||'—'}</td>
           <td>${s.status||'—'}</td>
           <td class="mono">${s.academicYear||'—'}${isDueForCompletion(s.academicYear)?' <span class="badge overdue">due</span>':''}</td>
@@ -2501,12 +2503,22 @@ function renderStudentModal(d){
               ${STUDENT_STATUS_OPTIONS.map(o=>`<option value="${o}" ${d.status===o?'selected':''}>${o}</option>`).join('')}
             </select>
           </div>
-          <div class="field"><label>Academic Year</label>
-            <select name="academicYear">
-              <option value="" ${!d.academicYear?'selected':''}>Select…</option>
-              ${academicYearOptions().map(o=>`<option value="${o}" ${d.academicYear===o?'selected':''}>${o}</option>`).join('')}
+          <div class="field"><label>Gender</label>
+            <select name="gender">
+              <option value="" ${!d.gender?'selected':''}>Select…</option>
+              ${SECTIONS.map(s=>`<option value="${s.label}" ${d.gender===s.label?'selected':''}>${s.label}</option>`).join('')}
             </select>
           </div>
+        </div>
+        <div class="field"><label>Academic Year</label>
+          <select name="academicYear">
+            <option value="" ${!d.academicYear?'selected':''}>Select…</option>
+            ${academicYearOptions().map(o=>`<option value="${o}" ${d.academicYear===o?'selected':''}>${o}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label>Comment / Notes <span style="font-weight:400;color:var(--ink-soft);text-transform:none;letter-spacing:0;">(e.g. behaviour notes — visible only within the house register)</span></label>
+          <textarea name="comment" rows="3" placeholder="Note anything worth flagging — misbehaviour, a warning issued, context for staff, etc.">${escapeAttr(d.comment||'')}</textarea>
         </div>
         <div class="modal-actions">
           <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
