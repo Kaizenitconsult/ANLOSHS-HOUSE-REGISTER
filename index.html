@@ -223,10 +223,10 @@ function sectionKeysForGender(genderId){
 // members. Each gets their own name+PIN login (like a house section does), but they
 // all see the exact same overview — the role only identifies who's signed in.
 const MANAGEMENT_ROLES = [
-  {id:'headmaster', label:'Headmaster'},
-  {id:'admin', label:'Asst. Headmaster (Administration)'},
-  {id:'domestic', label:'Asst. Headmaster (Domestic)'},
-  {id:'academic', label:'Asst. Headmaster (Academic)'},
+  {id:'headmaster', label:'Headmaster / Headmistress'},
+  {id:'admin', label:'Asst. Headmaster/Headmistress (Administration)'},
+  {id:'domestic', label:'Asst. Headmaster/Headmistress (Domestic)'},
+  {id:'academic', label:'Asst. Headmaster/Headmistress (Academic)'},
 ];
 function managementRoleMeta(roleId){ return MANAGEMENT_ROLES.find(r=>r.id===roleId) || MANAGEMENT_ROLES[0]; }
 
@@ -368,6 +368,9 @@ let state = {
   archiveRows: [],                 // loaded archive records, across all 4 houses for this gender
   archiveLoaded: false,
   archiveLoading: false,
+  vacationPeriod: null,            // {label, vacationDate, resumptionDate, setBy, setDate} — shared school-wide
+  vacationPeriodLoaded: false,
+  vacationPeriodLoading: false,
 };
 
 /* =================== HELPERS =================== */
@@ -396,7 +399,38 @@ function computeExeatStatus(ex){
 }
 
 function flaggedExeats(){
-  return state.exeats.map(e=>({...e, _status:computeExeatStatus(e)})).filter(e=>e._status.status==='overdue')
+  return state.exeats.filter(e=>e.category!=='vacation').map(e=>({...e, _status:computeExeatStatus(e)})).filter(e=>e._status.status==='overdue')
+    .sort((a,b)=>b._status.daysOverdue - a._status.daysOverdue);
+}
+
+/* ---- Vacation & Resumption tracking ----
+   Modelled as a special category of exeat: departure day = dateOut, resumption day =
+   expectedReturn, arrival = actualReturn. That means the same overdue/flag logic and
+   call-button UI built for regular exeats works here unchanged — a student who signed
+   out for vacation but hasn't signed back in by the resumption date is simply an
+   overdue exeat with category:'vacation'. The active vacation period's own vacationDate
+   acts as its identifier, so a student's status always reflects the *current* period,
+   not a resolved one from a previous term. */
+async function loadVacationPeriod(){
+  state.vacationPeriodLoading = true; render();
+  try{
+    const res = await safeGet('vacation-period');
+    state.vacationPeriod = res ? JSON.parse(res.value) : null;
+  }catch(e){ state.vacationPeriod = null; }
+  state.vacationPeriodLoaded = true;
+  state.vacationPeriodLoading = false;
+  render();
+}
+function currentVacationExeatFor(exeats, studentId){
+  if(!state.vacationPeriod) return null;
+  return exeats.find(e=>e.studentId===studentId && e.category==='vacation' && e.dateOut===state.vacationPeriod.vacationDate) || null;
+}
+function vacationWatchList(exeats, studentsById){
+  if(!state.vacationPeriod) return [];
+  return exeats
+    .filter(e=>e.category==='vacation' && e.dateOut===state.vacationPeriod.vacationDate)
+    .map(e=>({...e, _status:computeExeatStatus(e), _student: studentsById(e.studentId)}))
+    .filter(e=>e._status.status==='overdue')
     .sort((a,b)=>b._status.daysOverdue - a._status.daysOverdue);
 }
 
@@ -464,6 +498,7 @@ async function loadHouseData(houseId){
     state.exeats = exeatsRes ? JSON.parse(exeatsRes.value) : [];
   }catch(err){ console.error('Load error', err); showToast('Could not load some data.'); }
   await loadAttendanceForWeek();
+  if(!state.vacationPeriodLoaded && !state.vacationPeriodLoading) await loadVacationPeriod();
   state.loading = false;
   render();
 }
@@ -818,7 +853,11 @@ function switchHouse(){
   state.authMode=null; state.authError=''; state.pinInput='';
   render();
 }
-function setTab(tab){ state.tab = tab; render(); }
+function setTab(tab){
+  state.tab = tab;
+  render();
+  if(tab==='vacation' && !state.vacationPeriodLoaded && !state.vacationPeriodLoading) loadVacationPeriod();
+}
 
 async function submitAuthSetup(e){
   e.preventDefault();
@@ -1027,12 +1066,17 @@ async function submitSeniorLead(e){
   await persist('senior-info:'+state.seniorGender, state.seniorInfo);
   showToast(newPin ? 'Account and PIN updated.' : 'Account saved.');
 }
-function setSeniorTab(tab){ state.seniorTab = tab; render(); }
+function setSeniorTab(tab){
+  state.seniorTab = tab;
+  render();
+  if(tab==='vacation' && !state.vacationPeriodLoaded && !state.vacationPeriodLoading) loadVacationPeriod();
+}
 
 async function loadSeniorOverview(){
   state.seniorOverviewLoading = true; render();
   const data = await fetchOverviewFor(sectionKeysForGender(state.seniorGender));
   state.seniorOverview = data;
+  if(!state.vacationPeriodLoaded && !state.vacationPeriodLoading) await loadVacationPeriod();
   state.seniorOverviewLoading = false;
   render();
 }
@@ -1055,7 +1099,8 @@ async function fetchOverviewFor(sectionKeys){
     const exeats = exeatsRes ? JSON.parse(exeatsRes.value) : [];
     const info = infoRes ? JSON.parse(infoRes.value) : {housemaster:null, staff:[]};
     const attendance = attRes ? JSON.parse(attRes.value) : {};
-    const flagged = exeats.map(e=>({...e, _status:computeExeatStatus(e)})).filter(e=>e._status.status==='overdue')
+    const nonVacationExeats = exeats.filter(e=>e.category!=='vacation');
+    const flagged = nonVacationExeats.map(e=>({...e, _status:computeExeatStatus(e)})).filter(e=>e._status.status==='overdue')
       .map(e=>{
         const s = students.find(st=>st.id===e.studentId);
         return { ...e, studentName: s?s.name:'Unknown student', studentPhoto: s?s.photo:null };
@@ -1072,7 +1117,7 @@ async function fetchOverviewFor(sectionKeys){
       leadName: info.housemaster ? info.housemaster.name : null,
       leadPortfolio: info.housemaster ? info.housemaster.portfolio : null,
       studentCount: students.length,
-      onExeatCount: exeats.filter(e=>!e.actualReturn).length,
+      onExeatCount: nonVacationExeats.filter(e=>!e.actualReturn).length,
       flagged,
       attendancePct,
       students,
@@ -1285,6 +1330,67 @@ async function deleteExeat(id){
   await saveExeats();
 }
 
+/* ---- Vacation & Resumption: house-level actions ---- */
+async function submitVacationPeriod(e){
+  e.preventDefault();
+  const f = e.target;
+  const label = f.label.value.trim();
+  const vacationDate = f.vacationDate.value;
+  const resumptionDate = f.resumptionDate.value;
+  if(!label || !vacationDate || !resumptionDate){ showToast('Fill in all three fields.'); return; }
+  if(resumptionDate <= vacationDate){ showToast('Resumption date must be after the vacation date.'); return; }
+  const whoLabel = state.houseInfo.housemaster ? state.houseInfo.housemaster.name
+    : (state.seniorInfo && state.seniorInfo.lead ? state.seniorInfo.lead.name : 'Unknown');
+  state.vacationPeriod = { label, vacationDate, resumptionDate, setBy: whoLabel, setDate: todayISO() };
+  await persist('vacation-period', state.vacationPeriod);
+  closeModal(); render();
+  showToast('Vacation period saved for the whole school.');
+}
+async function signVacationDeparture(studentId){
+  if(!state.vacationPeriod){ showToast('Set the vacation period first.'); return; }
+  const s = state.students.find(st=>st.id===studentId);
+  if(!s) return;
+  const exeat = {
+    id: uuid(), studentId,
+    dateOut: state.vacationPeriod.vacationDate,
+    days: daysBetween(parseISO(state.vacationPeriod.vacationDate), parseISO(state.vacationPeriod.resumptionDate)),
+    expectedReturn: state.vacationPeriod.resumptionDate,
+    destination: 'Home for vacation',
+    contact: s.contact || '',
+    reason: state.vacationPeriod.label,
+    category: 'vacation',
+    actualReturn: null,
+  };
+  state.exeats.unshift(exeat);
+  render();
+  await saveExeats();
+  showToast(`${s.name} signed out for vacation.`);
+}
+async function markAllDeparted(){
+  if(!state.vacationPeriod){ showToast('Set the vacation period first.'); return; }
+  const departedIds = new Set();
+  state.exeats.forEach(e=>{ if(e.category==='vacation' && e.dateOut===state.vacationPeriod.vacationDate) departedIds.add(e.studentId); });
+  const remaining = state.students.filter(s=>!departedIds.has(s.id));
+  if(remaining.length===0){ showToast('Everyone is already signed out.'); return; }
+  if(!confirm(`Mark all ${remaining.length} remaining student(s) as departed today?`)) return;
+  remaining.forEach(s=>{
+    state.exeats.unshift({
+      id: uuid(), studentId: s.id,
+      dateOut: state.vacationPeriod.vacationDate,
+      days: daysBetween(parseISO(state.vacationPeriod.vacationDate), parseISO(state.vacationPeriod.resumptionDate)),
+      expectedReturn: state.vacationPeriod.resumptionDate,
+      destination: 'Home for vacation',
+      contact: s.contact || '',
+      reason: state.vacationPeriod.label,
+      category: 'vacation',
+      actualReturn: null,
+    });
+  });
+  render();
+  await saveExeats();
+  showToast(`${remaining.length} student(s) marked as departed.`);
+}
+
 /* ---- Senior portal: admit & assign a student to a house ---- */
 function handleAdmitPhotoInput(input){
   const file = input.files[0];
@@ -1377,6 +1483,59 @@ async function deleteSeniorExeat(sectionKey, exeatId){
     const res = await safeGet('exeats:'+sectionKey);
     const exeats = (res ? JSON.parse(res.value) : []).filter(e=>e.id!==exeatId);
     await persist('exeats:'+sectionKey, exeats);
+    loadSeniorOverview();
+  }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
+}
+async function signSeniorVacationDeparture(sectionKey, studentId){
+  if(!state.vacationPeriod){ showToast('Set the vacation period first.'); return; }
+  try{
+    const s = state.seniorOverview[sectionKey] ? state.seniorOverview[sectionKey].students.find(st=>st.id===studentId) : null;
+    if(!s) return;
+    const res = await safeGet('exeats:'+sectionKey);
+    const exeats = res ? JSON.parse(res.value) : [];
+    exeats.unshift({
+      id: uuid(), studentId,
+      dateOut: state.vacationPeriod.vacationDate,
+      days: daysBetween(parseISO(state.vacationPeriod.vacationDate), parseISO(state.vacationPeriod.resumptionDate)),
+      expectedReturn: state.vacationPeriod.resumptionDate,
+      destination: 'Home for vacation',
+      contact: s.contact || '',
+      reason: state.vacationPeriod.label,
+      category: 'vacation',
+      actualReturn: null,
+    });
+    await persist('exeats:'+sectionKey, exeats);
+    showToast(`${s.name} signed out for vacation.`);
+    loadSeniorOverview();
+  }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
+}
+async function markAllDepartedSenior(sectionKey){
+  if(!state.vacationPeriod){ showToast('Set the vacation period first.'); return; }
+  const section = state.seniorOverview[sectionKey];
+  if(!section) return;
+  try{
+    const res = await safeGet('exeats:'+sectionKey);
+    const exeats = res ? JSON.parse(res.value) : [];
+    const departedIds = new Set();
+    exeats.forEach(e=>{ if(e.category==='vacation' && e.dateOut===state.vacationPeriod.vacationDate) departedIds.add(e.studentId); });
+    const remaining = section.students.filter(s=>!departedIds.has(s.id));
+    if(remaining.length===0){ showToast('Everyone in this house is already signed out.'); return; }
+    if(!confirm(`Mark all ${remaining.length} remaining student(s) in ${section.house.name} as departed today?`)) return;
+    remaining.forEach(s=>{
+      exeats.unshift({
+        id: uuid(), studentId: s.id,
+        dateOut: state.vacationPeriod.vacationDate,
+        days: daysBetween(parseISO(state.vacationPeriod.vacationDate), parseISO(state.vacationPeriod.resumptionDate)),
+        expectedReturn: state.vacationPeriod.resumptionDate,
+        destination: 'Home for vacation',
+        contact: s.contact || '',
+        reason: state.vacationPeriod.label,
+        category: 'vacation',
+        actualReturn: null,
+      });
+    });
+    await persist('exeats:'+sectionKey, exeats);
+    showToast(`${remaining.length} student(s) marked as departed in ${section.house.name}.`);
     loadSeniorOverview();
   }catch(err){ console.error(err); showToast('Could not save — please try again.'); }
 }
@@ -1849,6 +2008,7 @@ function renderSeniorPortal(){
     ['dashboard','Dashboard'],
     ['admit','Admit & Assign'],
     ['exeat','Exeat & Movement'],
+    ['vacation','Vacation & Resumption'],
     ['completions','Completions & Archive'],
   ];
   return `
@@ -1875,6 +2035,7 @@ function renderSeniorPortal(){
       ${state.seniorTab==='dashboard' ? renderSeniorDashboardTab() : ''}
       ${state.seniorTab==='admit' ? renderSeniorAdmitTab() : ''}
       ${state.seniorTab==='exeat' ? renderSeniorExeatTab() : ''}
+      ${state.seniorTab==='vacation' ? renderSeniorVacationTab() : ''}
       ${state.seniorTab==='completions' ? renderSeniorCompletionsTab() : ''}
     </div>
   </div>
@@ -1920,6 +2081,31 @@ function renderSeniorDashboardTab(){
   <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
     <div style="font-size:13.5px;color:var(--accent-dark);">✓ No overdue exeats right now across any house.</div>
   </div>`}
+  ${(()=>{
+    if(!state.vacationPeriod) return '';
+    const studentsById = (id)=>{ for(const s of sections){ const m=s.students.find(st=>st.id===id); if(m) return m; } return null; };
+    const allExeats = sections.flatMap(s=>s.exeats||[]);
+    const watch = vacationWatchList(allExeats, studentsById).map(e=>{
+      const owner = sections.find(s=>(s.exeats||[]).some(x=>x.id===e.id));
+      return { ...e, house: owner ? owner.house : null };
+    });
+    if(watch.length===0) return '';
+    return `
+  <div class="alert-banner">
+    <h3>⚠ Resumption Watch — signed out for vacation, not yet back, any house</h3>
+    ${watch.map(f=>`
+      <div class="flag-row">
+        ${photoOrInitials(f._student, 'thumb')}
+        <div class="name">${f._student?f._student.name:'Unknown student'} ${f.house?`<span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">&middot; ${f.house.name}</span>`:''}
+          <div style="font-weight:400;font-size:11.5px;color:var(--ink-soft);margin-top:2px;">expected back ${fmtDateFull(state.vacationPeriod.resumptionDate)}</div>
+        </div>
+        <div class="days">${f._status.daysOverdue} day${f._status.daysOverdue===1?'':'s'} overdue</div>
+        ${callButtonHtml(f.contact, 'Call parent/guardian')}
+      </div>
+    `).join('')}
+    <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">See the Vacation &amp; Resumption tab to mark students as arrived.</div>
+  </div>`;
+  })()}
   <div class="panel" style="padding:0;">
     <div style="padding:20px 22px 4px;"><h3 style="margin:0;">Houses at a glance</h3></div>
     <table>
@@ -2080,6 +2266,104 @@ function renderSeniorExeatTab(){
   `;
 }
 
+function renderSeniorVacationTab(){
+  const role = seniorRoleMeta(state.seniorGender);
+  const period = state.vacationPeriod;
+  if(state.vacationPeriodLoading){
+    return `<div class="loading-note">Loading the school's vacation period\u2026</div>`;
+  }
+  const sections = Object.values(state.seniorOverview);
+  const allExeats = sections.flatMap(s=>(s.exeats||[]).map(e=>({...e, house:s.house, sectionKey:s.sectionKey})));
+  const studentsById = (id)=>{
+    for(const s of sections){ const f = s.students.find(st=>st.id===id); if(f) return f; }
+    return null;
+  };
+  const watch = period ? vacationWatchList(allExeats, studentsById).map(e=>{
+    const src = allExeats.find(x=>x.id===e.id);
+    return { ...e, house: src ? src.house : null };
+  }) : [];
+
+  return `
+  <div class="page-header">
+    <div><h1>Vacation &amp; Resumption</h1><div class="sub">${role.label} &middot; track every ${role.short.split(' ')[0].toLowerCase()} student across all four houses</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>${period ? 'Current vacation period' : 'Set the vacation period'}</h3>
+    ${period ? `
+      <div style="font-size:13.5px;color:var(--ink);margin-bottom:4px;"><b>${period.label}</b></div>
+      <div style="font-size:12.5px;color:var(--ink-soft);">Vacated ${fmtDateFull(period.vacationDate)} &middot; Expected back ${fmtDateFull(period.resumptionDate)} &middot; set by ${period.setBy} on ${fmtDateFull(period.setDate)}</div>
+      <button class="btn secondary small" style="margin-top:12px;" onclick="openModal('vacation-period')">Start a new vacation period</button>
+    ` : `
+      <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">This is shared across the whole school — set it once and every house, plus this portal, sees the same dates.</div>
+      <button class="btn" onclick="openModal('vacation-period')">Set vacation period</button>
+    `}
+  </div>
+
+  ${!period ? '' : `
+  ${watch.length>0 ? `
+  <div class="alert-banner">
+    <h3>⚠ Resumption Watch — signed out, not yet back, any house</h3>
+    ${watch.map(e=>`
+      <div class="flag-row">
+        ${photoOrInitials(e._student, 'thumb')}
+        <div class="name">${e._student?e._student.name:'Unknown student'} <span class="mono" style="font-weight:400;color:var(--ink-soft);font-size:11.5px;">&middot; ${e.house?e.house.name:''}</span></div>
+        <div style="font-size:12px;color:var(--ink-soft);">expected back ${fmtDateFull(period.resumptionDate)}</div>
+        ${callButtonHtml(e.contact, 'Call parent/guardian')}
+        <div class="days">${e._status.daysOverdue} day${e._status.daysOverdue===1?'':'s'} overdue</div>
+      </div>
+    `).join('')}
+  </div>` : `
+  <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
+    <div style="font-size:13.5px;color:var(--accent-dark);">✓ No one is overdue for resumption right now, in any house.</div>
+  </div>`}
+
+  ${HOUSES.map(h=>{
+    const sectionKey = h.id+':'+state.seniorGender;
+    const section = state.seniorOverview[sectionKey];
+    if(!section) return '';
+    const departedIds = new Set();
+    (section.exeats||[]).forEach(e=>{ if(e.category==='vacation' && e.dateOut===period.vacationDate) departedIds.add(e.studentId); });
+    const notYetDeparted = section.students.filter(s=>!departedIds.has(s.id));
+    return `
+    <div class="panel" style="padding:0;">
+      <div style="padding:18px 22px 12px;display:flex;justify-content:space-between;align-items:center;">
+        <h3 style="margin:0;">${h.name}</h3>
+        ${notYetDeparted.length>0 ? `<button class="btn secondary small" onclick="markAllDepartedSenior('${sectionKey}')">Mark all ${notYetDeparted.length} remaining as departed today</button>` : ''}
+      </div>
+      ${section.students.length===0 ? `<div class="empty-state">No students in this house yet.</div>` : `
+      <table>
+        <thead><tr><th></th><th>Name</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+        ${section.students.map(s=>{
+          const ex = (section.exeats||[]).find(e=>e.studentId===s.id && e.category==='vacation' && e.dateOut===period.vacationDate);
+          let statusBadge, action;
+          if(!ex){
+            statusBadge = `<span class="badge" style="background:#E8E6DD;color:var(--ink-soft);">Not yet departed</span>`;
+            action = `<button class="icon-btn" onclick="signSeniorVacationDeparture('${sectionKey}','${s.id}')">Sign departure</button>`;
+          } else if(ex.actualReturn){
+            statusBadge = `<span class="badge returned">Arrived ${fmtDateFull(ex.actualReturn)}</span>`;
+            action = '';
+          } else {
+            const st = computeExeatStatus(ex);
+            statusBadge = st.status==='overdue' ? `<span class="badge overdue">${st.daysOverdue}d overdue</span>` : `<span class="badge out">Departed &middot; not yet arrived</span>`;
+            action = `<button class="icon-btn" onclick="markSeniorReturned('${sectionKey}','${ex.id}')">Mark arrived</button>`;
+          }
+          return `<tr class="${ex && !ex.actualReturn && computeExeatStatus(ex).status==='overdue' ? 'flagged' : ''}">
+            <td>${photoOrInitials(s,'')}</td>
+            <td>${s.name}</td>
+            <td>${statusBadge}</td>
+            <td class="row-actions">${action}</td>
+          </tr>`;
+        }).join('')}
+        </tbody>
+      </table>`}
+    </div>`;
+  }).join('')}
+  `}
+  `;
+}
+
 function renderSeniorCompletionsTab(){
   const role = seniorRoleMeta(state.seniorGender);
   const candidates = state.completionCandidates;
@@ -2174,6 +2458,7 @@ function renderSidebar(h, flagCount){
     ['students','Students'],
     ['attendance','Attendance'],
     ['exeat','Exeat & Movement'],
+    ['vacation','Vacation & Resumption'],
     ['team','House Team'],
   ];
   return `
@@ -2204,13 +2489,14 @@ function renderTab(h, flags){
   if(state.tab==='students') return renderStudents(h);
   if(state.tab==='attendance') return renderAttendance(h);
   if(state.tab==='exeat') return renderExeat(h);
+  if(state.tab==='vacation') return renderVacationTab(h);
   if(state.tab==='team') return renderTeam(h);
   return '';
 }
 
 function renderDashboard(h, flags){
   const total = state.students.length;
-  const outNow = state.exeats.filter(e=>!e.actualReturn).length;
+  const outNow = state.exeats.filter(e=>e.category!=='vacation' && !e.actualReturn).length;
   const weekDates = getWeekDates(state.weekStart);
   const todayIdx = weekDates.findIndex(d=>isoDate(d)===todayISO());
   const daysElapsed = todayIdx>=0 ? todayIdx+1 : 7;
@@ -2255,6 +2541,27 @@ function renderDashboard(h, flags){
   <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
     <div style="font-size:13.5px;color:var(--accent-dark);">✓ No overdue exeats right now — every student is accounted for.</div>
   </div>`}
+
+  ${(()=>{
+    if(!state.vacationPeriod) return '';
+    const watch = vacationWatchList(state.exeats, (id)=>state.students.find(s=>s.id===id));
+    if(watch.length===0) return '';
+    return `
+  <div class="alert-banner">
+    <h3>⚠ Resumption Watch — signed out for vacation, not yet back</h3>
+    ${watch.map(f=>`
+      <div class="flag-row">
+        ${photoOrInitials(f._student, 'thumb')}
+        <div class="name">${f._student?f._student.name:'Unknown student'}
+          <div style="font-weight:400;font-size:11.5px;color:var(--ink-soft);margin-top:2px;">expected back ${fmtDateFull(state.vacationPeriod.resumptionDate)}</div>
+        </div>
+        <div class="days">${f._status.daysOverdue} day${f._status.daysOverdue===1?'':'s'} overdue</div>
+        ${callButtonHtml(f.contact, 'Call parent/guardian')}
+      </div>
+    `).join('')}
+    <div style="font-size:11.5px;color:var(--ink-soft);margin-top:10px;">See the Vacation &amp; Resumption tab to mark students as arrived.</div>
+  </div>`;
+  })()}
 
   <div class="panel">
     <h3>House lead</h3>
@@ -2446,6 +2753,91 @@ function renderExeat(h){
   `;
 }
 
+function renderVacationTab(h){
+  if(state.vacationPeriodLoading){
+    return `<div class="loading-note">Loading the school's vacation period\u2026</div>`;
+  }
+  const period = state.vacationPeriod;
+  const studentsById = (id)=>state.students.find(s=>s.id===id);
+  const watch = period ? vacationWatchList(state.exeats, studentsById) : [];
+  const departedIds = new Set();
+  if(period){
+    state.exeats.forEach(e=>{ if(e.category==='vacation' && e.dateOut===period.vacationDate) departedIds.add(e.studentId); });
+  }
+  const notYetDeparted = period ? state.students.filter(s=>!departedIds.has(s.id)) : [];
+
+  return `
+  <div class="page-header">
+    <div><h1>Vacation &amp; Resumption</h1><div class="sub">Track every student from the day school vacates to the day school reopens</div></div>
+  </div>
+
+  <div class="panel">
+    <h3>${period ? 'Current vacation period' : 'Set the vacation period'}</h3>
+    ${period ? `
+      <div style="font-size:13.5px;color:var(--ink);margin-bottom:4px;"><b>${period.label}</b></div>
+      <div style="font-size:12.5px;color:var(--ink-soft);">Vacated ${fmtDateFull(period.vacationDate)} &middot; Expected back ${fmtDateFull(period.resumptionDate)} &middot; set by ${period.setBy} on ${fmtDateFull(period.setDate)}</div>
+      <button class="btn secondary small" style="margin-top:12px;" onclick="openModal('vacation-period')">Start a new vacation period</button>
+    ` : `
+      <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">This is shared across the whole school — set it once (from any house or the Senior portal) and every house sees the same dates.</div>
+      <button class="btn" onclick="openModal('vacation-period')">Set vacation period</button>
+    `}
+  </div>
+
+  ${!period ? '' : `
+  ${watch.length>0 ? `
+  <div class="alert-banner">
+    <h3>⚠ Resumption Watch — signed out, not yet back</h3>
+    ${watch.map(e=>`
+      <div class="flag-row">
+        ${photoOrInitials(e._student, 'thumb')}
+        <div class="name">${e._student?e._student.name:'Unknown student'}</div>
+        <div style="font-size:12px;color:var(--ink-soft);">expected back ${fmtDateFull(period.resumptionDate)}</div>
+        ${callButtonHtml(e.contact, 'Call parent/guardian')}
+        <div class="days">${e._status.daysOverdue} day${e._status.daysOverdue===1?'':'s'} overdue</div>
+      </div>
+    `).join('')}
+  </div>` : `
+  <div class="panel" style="background:var(--accent-tint);border-color:transparent;">
+    <div style="font-size:13.5px;color:var(--accent-dark);">✓ No one is overdue for resumption right now.</div>
+  </div>`}
+
+  <div class="panel" style="padding:0;">
+    <div style="padding:20px 22px 12px;display:flex;justify-content:space-between;align-items:center;">
+      <h3 style="margin:0;">Every student's status</h3>
+      ${notYetDeparted.length>0 ? `<button class="btn secondary small" onclick="markAllDeparted()">Mark all ${notYetDeparted.length} remaining as departed today</button>` : ''}
+    </div>
+    ${state.students.length===0 ? `<div class="empty-state">No students in this house yet.</div>` : `
+    <table>
+      <thead><tr><th></th><th>Name</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      ${state.students.map(s=>{
+        const ex = currentVacationExeatFor(state.exeats, s.id);
+        let statusBadge, action;
+        if(!ex){
+          statusBadge = `<span class="badge" style="background:#E8E6DD;color:var(--ink-soft);">Not yet departed</span>`;
+          action = `<button class="icon-btn" onclick="signVacationDeparture('${s.id}')">Sign departure</button>`;
+        } else if(ex.actualReturn){
+          statusBadge = `<span class="badge returned">Arrived ${fmtDateFull(ex.actualReturn)}</span>`;
+          action = '';
+        } else {
+          const st = computeExeatStatus(ex);
+          statusBadge = st.status==='overdue' ? `<span class="badge overdue">${st.daysOverdue}d overdue</span>` : `<span class="badge out">Departed &middot; not yet arrived</span>`;
+          action = `<button class="icon-btn" onclick="markReturned('${ex.id}')">Mark arrived</button>`;
+        }
+        return `<tr class="${ex && !ex.actualReturn && computeExeatStatus(ex).status==='overdue' ? 'flagged' : ''}">
+          <td>${photoOrInitials(s,'')}</td>
+          <td>${s.name}</td>
+          <td>${statusBadge}</td>
+          <td class="row-actions">${action}</td>
+        </tr>`;
+      }).join('')}
+      </tbody>
+    </table>`}
+  </div>
+  `}
+  `;
+}
+
 function renderTeam(h){
   return `
   <div class="page-header">
@@ -2504,6 +2896,7 @@ function renderModal(){
   if(type==='section-roster') return renderSectionRosterModal(data);
   if(type==='senior-lead') return renderSeniorLeadModal(data);
   if(type==='senior-exeat') return renderSeniorExeatModal(data);
+  if(type==='vacation-period') return renderVacationPeriodModal();
   return '';
 }
 
@@ -2831,6 +3224,30 @@ function renderSeniorExeatModal(){
   </div>`;
 }
 
+function renderVacationPeriodModal(){
+  const p = state.vacationPeriod;
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>${p ? 'Start a new vacation period' : 'Set the vacation period'}</h2>
+      <div style="font-size:11.5px;color:var(--ink-soft);margin-top:-8px;margin-bottom:14px;">This applies school-wide — every house and the Senior portal will see the same dates.
+      ${p ? ' Starting a new one replaces the current period; students already marked arrived stay marked, but the Resumption Watch resets to track this new term.' : ''}</div>
+      <form onsubmit="submitVacationPeriod(event)">
+        <div class="field"><label>Term / label</label><input type="text" name="label" placeholder="e.g. End of Term 2, 2025/2026" value="${escapeAttr(p?p.label:'')}" required></div>
+        <div class="field-row">
+          <div class="field"><label>School vacates on</label><input type="date" name="vacationDate" value="${p?p.vacationDate:todayISO()}" required></div>
+          <div class="field"><label>School reopens on</label><input type="date" name="resumptionDate" value="${p?p.resumptionDate:''}" required></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save vacation period</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
 function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;'); }
 function attachGlobalHandlers(){ /* using inline handlers; nothing extra needed */ }
 
@@ -2860,6 +3277,10 @@ window.markSeniorReturned=markSeniorReturned; window.deleteSeniorExeat=deleteSen
 window.scanForCompletions=scanForCompletions; window.toggleCompletionSelection=toggleCompletionSelection;
 window.archiveSelectedCompletions=archiveSelectedCompletions; window.loadSeniorArchive=loadSeniorArchive;
 window.exportSeniorArchive=exportSeniorArchive;
+window.submitVacationPeriod=submitVacationPeriod; window.signVacationDeparture=signVacationDeparture;
+window.markAllDeparted=markAllDeparted; window.signSeniorVacationDeparture=signSeniorVacationDeparture;
+window.markAllDepartedSenior=markAllDepartedSenior;
+window.loadTrash=loadTrash; window.toggleTrashPanel=toggleTrashPanel; window.restoreStudent=restoreStudent;
 
 init();
 </script>
