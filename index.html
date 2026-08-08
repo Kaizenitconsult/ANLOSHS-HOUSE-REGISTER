@@ -1346,6 +1346,38 @@ async function submitVacationPeriod(e){
   closeModal(); render();
   showToast('Vacation period saved for the whole school.');
 }
+async function clearVacationPeriod(){
+  const oldPeriod = state.vacationPeriod;
+  if(!oldPeriod){ showToast('No vacation period is set.'); return; }
+  if(!confirm(`Clear the current vacation period ("${oldPeriod.label}")? This removes it school-wide, and also removes any "departed for vacation" sign-outs tied to it here in ${getHouse(state.houseId).name}. If other houses recorded sign-outs for this same period, clear it from each of them too — or from the Senior portal, which clears all four houses for one gender at once.`)) return;
+  try{
+    await persist('vacation-period', null);
+    state.vacationPeriod = null;
+    state.exeats = state.exeats.filter(e=> !(e.category==='vacation' && e.dateOut===oldPeriod.vacationDate));
+    render();
+    await saveExeats();
+    showToast('Vacation period cleared.');
+  }catch(err){ console.error(err); showToast('Could not clear — please try again.'); }
+}
+async function clearVacationPeriodSenior(){
+  const oldPeriod = state.vacationPeriod;
+  if(!oldPeriod){ showToast('No vacation period is set.'); return; }
+  if(!confirm(`Clear the current vacation period ("${oldPeriod.label}")? This removes it school-wide, and also removes any "departed for vacation" sign-outs tied to it across all four houses shown here. If the other gender's houses also recorded test sign-outs, clear it from that Senior portal too.`)) return;
+  try{
+    await persist('vacation-period', null);
+    state.vacationPeriod = null;
+    await Promise.all(HOUSES.map(async h=>{
+      const sectionKey = h.id+':'+state.seniorGender;
+      const res = await safeGet('exeats:'+sectionKey);
+      const exeats = res ? JSON.parse(res.value) : [];
+      const cleaned = exeats.filter(e=> !(e.category==='vacation' && e.dateOut===oldPeriod.vacationDate));
+      if(cleaned.length !== exeats.length) await persist('exeats:'+sectionKey, cleaned);
+    }));
+    render();
+    showToast('Vacation period cleared across all four houses.');
+    loadSeniorOverview();
+  }catch(err){ console.error(err); showToast('Could not clear — please try again.'); }
+}
 async function signVacationDeparture(studentId){
   if(!state.vacationPeriod){ showToast('Set the vacation period first.'); return; }
   const s = state.students.find(st=>st.id===studentId);
@@ -2294,6 +2326,7 @@ function renderSeniorVacationTab(){
       <div style="font-size:13.5px;color:var(--ink);margin-bottom:4px;"><b>${period.label}</b></div>
       <div style="font-size:12.5px;color:var(--ink-soft);">Vacated ${fmtDateFull(period.vacationDate)} &middot; Expected back ${fmtDateFull(period.resumptionDate)} &middot; set by ${period.setBy} on ${fmtDateFull(period.setDate)}</div>
       <button class="btn secondary small" style="margin-top:12px;" onclick="openModal('vacation-period')">Start a new vacation period</button>
+      <button class="btn secondary small" style="margin-top:12px;color:var(--red-flag);" onclick="clearVacationPeriodSenior()">Clear vacation period</button>
     ` : `
       <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">This is shared across the whole school — set it once and every house, plus this portal, sees the same dates.</div>
       <button class="btn" onclick="openModal('vacation-period')">Set vacation period</button>
@@ -2777,6 +2810,7 @@ function renderVacationTab(h){
       <div style="font-size:13.5px;color:var(--ink);margin-bottom:4px;"><b>${period.label}</b></div>
       <div style="font-size:12.5px;color:var(--ink-soft);">Vacated ${fmtDateFull(period.vacationDate)} &middot; Expected back ${fmtDateFull(period.resumptionDate)} &middot; set by ${period.setBy} on ${fmtDateFull(period.setDate)}</div>
       <button class="btn secondary small" style="margin-top:12px;" onclick="openModal('vacation-period')">Start a new vacation period</button>
+      <button class="btn secondary small" style="margin-top:12px;color:var(--red-flag);" onclick="clearVacationPeriod()">Clear vacation period</button>
     ` : `
       <div style="font-size:12.5px;color:var(--ink-soft);margin-bottom:12px;">This is shared across the whole school — set it once (from any house or the Senior portal) and every house sees the same dates.</div>
       <button class="btn" onclick="openModal('vacation-period')">Set vacation period</button>
@@ -3280,6 +3314,7 @@ window.exportSeniorArchive=exportSeniorArchive;
 window.submitVacationPeriod=submitVacationPeriod; window.signVacationDeparture=signVacationDeparture;
 window.markAllDeparted=markAllDeparted; window.signSeniorVacationDeparture=signSeniorVacationDeparture;
 window.markAllDepartedSenior=markAllDepartedSenior;
+window.clearVacationPeriod=clearVacationPeriod; window.clearVacationPeriodSenior=clearVacationPeriodSenior;
 window.loadTrash=loadTrash; window.toggleTrashPanel=toggleTrashPanel; window.restoreStudent=restoreStudent;
 
 init();
