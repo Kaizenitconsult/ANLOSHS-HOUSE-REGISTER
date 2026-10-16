@@ -334,8 +334,8 @@ let db = null;
    sending is deliberately best-effort and never blocks an exeat or vacation
    sign-out from saving. */
 const SMSONLINEGH_CONFIG = {
-  apiKey: "a5800f3cbd0706dab1d1c8c1048af61fa832620125ff7f049c82dcc55069f85a",
-  senderId: "ANLOSHS", // max 11 characters, must already exist on your account
+  apiKey: "REPLACE_WITH_YOUR_SMSONLINEGH_API_KEY",
+  senderId: "REPLACE_WITH_YOUR_REGISTERED_SENDER_NAME", // max 11 characters, must already exist on your account
 };
 const SMS_ENABLED = SMSONLINEGH_CONFIG.apiKey.indexOf('REPLACE_WITH') !== 0;
 let firebaseReady = false;
@@ -393,6 +393,14 @@ let state = {
   vacationPeriod: null,            // {label, vacationDate, resumptionDate, setBy, setDate} — shared school-wide
   vacationPeriodLoaded: false,
   vacationPeriodLoading: false,
+  adminExists: false,              // true once a System Administrator account has been created
+  adminInfo: {lead: null},         // {name, portfolio, pinHash}
+  adminTab: 'accounts',            // accounts | staff
+  adminAccounts: [],               // [{slot, record}] — all 14 login accounts
+  adminAccountsLoading: false,
+  adminStaffSection: null,         // sectionKey being edited on the House staff tab
+  adminStaffInfo: null,            // that section's house-info record
+  adminStaffLoading: false,
 };
 
 /* =================== HELPERS =================== */
@@ -900,6 +908,8 @@ function handleHouseTemplateUpload(input){
 async function loadGlobalAssets(){
   try{ const r = await safeGet('school-logo'); state.schoolLogo = r ? JSON.parse(r.value) : null; }
   catch(e){ state.schoolLogo = null; }
+  try{ const a = await safeGet('admin-info'); const ai = a ? JSON.parse(a.value) : null; state.adminExists = !!(ai && ai.lead && ai.lead.pinHash); }
+  catch(e){ state.adminExists = false; }
   await Promise.all(HOUSES.map(async h=>{
     try{ const r = await safeGet('house-logo:'+h.id); state.houseLogos[h.id] = r ? JSON.parse(r.value) : null; }
     catch(e){ state.houseLogos[h.id] = null; }
@@ -981,6 +991,7 @@ function submitAuthLogin(e){
   }
 }
 async function resetHouseLead(){
+  if(state.adminExists){ showToast('Ask the System Administrator to reset this account.'); return; }
   if(!confirm('This clears the housemaster/mistress name and PIN for this house so a new account can be created. Students, staff, attendance and exeat records are kept. Continue?')) return;
   state.houseInfo.housemaster = null;
   await saveHouseInfo();
@@ -1040,6 +1051,7 @@ function submitManagementLogin(e){
   }
 }
 async function resetManagementLead(){
+  if(state.adminExists){ showToast('Ask the System Administrator to reset this account.'); return; }
   if(!confirm('This clears this role\u2019s name and PIN so a new account can be created. Continue?')) return;
   state.managementInfo.lead = null;
   await persist('management-info:'+state.managementRole, state.managementInfo);
@@ -1122,6 +1134,7 @@ function submitSeniorLogin(e){
   }
 }
 async function resetSeniorLead(){
+  if(state.adminExists){ showToast('Ask the System Administrator to reset this account.'); return; }
   if(!confirm('This clears this account\u2019s name and PIN so a new one can be created. Continue?')) return;
   state.seniorInfo.lead = null;
   await persist('senior-info:'+state.seniorGender, state.seniorInfo);
@@ -1823,6 +1836,8 @@ function render(){
   else if(state.screen==='management-dashboard') screenHtml = renderManagementDashboard();
   else if(state.screen==='senior-auth') screenHtml = renderSeniorAuthScreen();
   else if(state.screen==='senior-portal') screenHtml = renderSeniorPortal();
+  else if(state.screen==='admin-auth') screenHtml = renderAdminAuthScreen();
+  else if(state.screen==='admin-portal') screenHtml = renderAdminPortal();
   else screenHtml = renderWorkspace();
   root.innerHTML = screenHtml + (state.modal ? renderModal() : '');
   attachGlobalHandlers();
@@ -1913,6 +1928,7 @@ function renderSelectScreen(){
       </div>
     </div>
     <button class="switch-house-btn" style="width:auto;margin-top:28px;border:none;color:#B9C2B8;text-decoration:underline;background:transparent;" onclick="openModal('school-logo')">Update school logo</button>
+    <button class="switch-house-btn" style="width:auto;margin-top:8px;border:none;color:#B9C2B8;text-decoration:underline;background:transparent;" onclick="selectAdmin()">System Administrator</button>
     <div class="footer-credit">HOUSE MANAGEMENT SYSTEM &middot; DEVELOPED BY KAIZEN TECHNOLOGIES — FRANCIS NORMANYO</div>
   </div>`;
 }
@@ -1958,7 +1974,7 @@ function renderAuthScreen(){
           ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
           <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
         </form>
-        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetHouseLead()">Forgot PIN? Reset house lead</button>
+        ${state.adminExists ? `<div style="font-size:12px;color:#B9C2B8;margin-top:12px;">Forgot your PIN? Ask the System Administrator to reset it.</div>` : `<button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetHouseLead()">Forgot PIN? Reset house lead</button>`}
       </div>
     `}
     <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Switch house</button>
@@ -2000,7 +2016,7 @@ function renderManagementAuthScreen(){
           ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
           <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
         </form>
-        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetManagementLead()">Forgot PIN? Reset this account</button>
+        ${state.adminExists ? `<div style="font-size:12px;color:#B9C2B8;margin-top:12px;">Forgot your PIN? Ask the System Administrator to reset it.</div>` : `<button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetManagementLead()">Forgot PIN? Reset this account</button>`}
       </div>
     `}
     <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Back</button>
@@ -2042,7 +2058,7 @@ function renderSeniorAuthScreen(){
           ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
           <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
         </form>
-        <button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetSeniorLead()">Forgot PIN? Reset this account</button>
+        ${state.adminExists ? `<div style="font-size:12px;color:#B9C2B8;margin-top:12px;">Forgot your PIN? Ask the System Administrator to reset it.</div>` : `<button class="switch-house-btn" style="border:none;color:#B9C2B8;text-decoration:underline;background:transparent;margin-top:10px;" onclick="resetSeniorLead()">Forgot PIN? Reset this account</button>`}
       </div>
     `}
     <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="switchHouse()">&larr; Back</button>
@@ -3033,6 +3049,9 @@ function renderModal(){
   if(type==='senior-lead') return renderSeniorLeadModal(data);
   if(type==='senior-exeat') return renderSeniorExeatModal(data);
   if(type==='vacation-period') return renderVacationPeriodModal();
+  if(type==='admin-account') return renderAdminAccountModal(data);
+  if(type==='admin-staff') return renderAdminStaffModal(data);
+  if(type==='admin-self') return renderAdminSelfModal();
   return '';
 }
 
@@ -3418,6 +3437,373 @@ window.markAllDeparted=markAllDeparted; window.signSeniorVacationDeparture=signS
 window.markAllDepartedSenior=markAllDepartedSenior;
 window.clearVacationPeriod=clearVacationPeriod; window.clearVacationPeriodSenior=clearVacationPeriodSenior;
 window.loadTrash=loadTrash; window.toggleTrashPanel=toggleTrashPanel; window.restoreStudent=restoreStudent;
+
+/* =================== ADMIN PORTAL =================== */
+// The System Administrator creates, edits (incl. PIN reset) and removes login accounts for
+// every portfolio, and manages each house's supporting staff. Accounts are written to the
+// SAME storage keys, with the SAME PIN salts, that the normal login screens use — so an
+// account created here logs in through the normal screens straight away.
+const HOUSE_LEAD_PORTFOLIOS = ['Housemaster','Housemistress','Assistant Housemaster','Assistant Housemistress'];
+function adminSlots(){
+  const slots = [];
+  allSectionKeys().forEach(k=>{
+    const h = getHouse(k), sec = sectionMeta(sectionOf(k));
+    slots.push({kind:'house', key:k, storageKey:'house-info:'+k, salt:k, group:'House leads',
+      label:h.name+' — '+sec.label+' section', defaultPortfolio:sec.portfolioDefault, portfolios:HOUSE_LEAD_PORTFOLIOS});
+  });
+  MANAGEMENT_ROLES.forEach(r=>slots.push({kind:'management', key:r.id, storageKey:'management-info:'+r.id, salt:'management:'+r.id,
+    group:'School management', label:r.label, defaultPortfolio:r.label, portfolios:null}));
+  SENIOR_ROLES.forEach(r=>slots.push({kind:'senior', key:r.id, storageKey:'senior-info:'+r.id, salt:'senior:'+r.id,
+    group:'Senior housemaster / housemistress', label:r.label, defaultPortfolio:r.label, portfolios:null}));
+  return slots;
+}
+function slotLead(slot, rec){
+  if(!rec) return null;
+  const l = slot.kind==='house' ? rec.housemaster : rec.lead;
+  return (l && l.pinHash) ? l : null;
+}
+async function loadAdminAccounts(){
+  state.adminAccountsLoading = true; render();
+  const slots = adminSlots();
+  state.adminAccounts = await Promise.all(slots.map(async slot=>{
+    let record = null;
+    try{ const r = await safeGet(slot.storageKey); record = r ? JSON.parse(r.value) : null; }catch(e){}
+    return {slot, record};
+  }));
+  state.adminAccountsLoading = false; render();
+}
+
+async function selectAdmin(){
+  state.screen='loading'; render();
+  let ai = {lead:null};
+  try{ const r = await safeGet('admin-info'); if(r) ai = JSON.parse(r.value); }catch(e){}
+  state.adminInfo = ai;
+  state.adminExists = !!(ai.lead && ai.lead.pinHash);
+  state.pinInput=''; state.authError='';
+  state.authMode = state.adminExists ? 'login' : 'setup';
+  state.screen='admin-auth'; render();
+}
+async function submitAdminSetup(e){
+  e.preventDefault();
+  if(state.adminExists){ state.authError='An administrator already exists.'; render(); return; }
+  const f = e.target;
+  const name = f.adName.value.trim(), pin = f.pin.value.trim(), pinConfirm = f.pinConfirm.value.trim();
+  if(!name){ state.authError='Enter your full name.'; render(); return; }
+  if(!isValidPin(pin)){ state.authError='PIN must be 4–6 digits.'; render(); return; }
+  if(pin!==pinConfirm){ state.authError='PINs do not match.'; render(); return; }
+  state.adminInfo = {lead:{name, portfolio:'System Administrator', pinHash:hashPin(pin,'admin')}};
+  const ok = await persist('admin-info', state.adminInfo);
+  if(!ok) return;
+  state.adminExists = true; state.authError='';
+  state.adminTab='accounts'; state.screen='admin-portal'; render();
+  showToast('Administrator account created.');
+  loadAdminAccounts();
+}
+function submitAdminLogin(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.adNameConfirm.value.trim(), pin = f.pin.value.trim();
+  const lead = state.adminInfo.lead;
+  if(lead && name.toLowerCase()===lead.name.trim().toLowerCase() && hashPin(pin,'admin')===lead.pinHash){
+    state.authError=''; state.adminTab='accounts'; state.screen='admin-portal'; render();
+    loadAdminAccounts();
+  } else { state.authError='Name or PIN doesn’t match our records.'; render(); }
+}
+function exitAdmin(){
+  state.screen='select'; state.adminAccounts=[]; state.adminStaffSection=null; state.adminStaffInfo=null;
+  state.authMode=null; state.authError=''; state.modal=null; render();
+}
+function setAdminTab(tab){
+  state.adminTab = tab; render();
+  if(tab==='staff' && !state.adminStaffSection) adminPickSection(allSectionKeys()[0]);
+}
+async function submitAdminSelf(e){
+  e.preventDefault();
+  const f = e.target;
+  const name = f.adName.value.trim();
+  if(!name){ showToast('Name is required.'); return; }
+  let pinHash = state.adminInfo.lead.pinHash;
+  const np = f.newPin.value.trim(), npc = f.newPinConfirm.value.trim();
+  if(np || npc){
+    if(!isValidPin(np)){ showToast('New PIN must be 4–6 digits.'); return; }
+    if(np!==npc){ showToast('New PINs do not match.'); return; }
+    pinHash = hashPin(np,'admin');
+  }
+  state.adminInfo.lead = {name, portfolio:'System Administrator', pinHash};
+  closeModal();
+  await persist('admin-info', state.adminInfo);
+  showToast(np ? 'Administrator name and PIN updated.' : 'Administrator saved.');
+}
+
+async function submitAdminAccount(e){
+  e.preventDefault();
+  const f = e.target;
+  const i = state.modal.data.index;
+  const entry = state.adminAccounts[i];
+  if(!entry){ return; }
+  const slot = entry.slot;
+  const existing = slotLead(slot, entry.record);
+  const name = f.acName.value.trim();
+  const portfolio = slot.portfolios ? f.acPortfolio.value : slot.defaultPortfolio;
+  const pin = f.pin.value.trim(), pinConfirm = f.pinConfirm.value.trim();
+  if(!name){ showToast('Name is required.'); return; }
+  let pinHash = existing ? existing.pinHash : null;
+  if(!existing || pin || pinConfirm){
+    if(!isValidPin(pin)){ showToast('PIN must be 4–6 digits.'); return; }
+    if(pin!==pinConfirm){ showToast('PINs do not match.'); return; }
+    pinHash = hashPin(pin, slot.salt);
+  }
+  const lead = {name, portfolio, pinHash};
+  const rec = entry.record ? {...entry.record} : (slot.kind==='house' ? {housemaster:null, staff:[]} : {lead:null});
+  if(slot.kind==='house'){ rec.housemaster = lead; if(!Array.isArray(rec.staff)) rec.staff = []; } else rec.lead = lead;
+  const ok = await persist(slot.storageKey, rec);
+  if(!ok) return;
+  entry.record = rec;
+  closeModal();
+  showToast(existing ? (pin ? 'Account and PIN updated.' : 'Account updated.') : 'Account created.');
+}
+async function adminRemoveAccount(i){
+  const entry = state.adminAccounts[i];
+  if(!entry) return;
+  const slot = entry.slot, lead = slotLead(slot, entry.record);
+  if(!lead) return;
+  if(!confirm('Remove the account for '+lead.name+' ('+slot.label+')?\n\nThey will no longer be able to log in, and a new account can be created for this portfolio. Students, attendance, exeat records and staff are kept.')) return;
+  const rec = {...entry.record};
+  if(slot.kind==='house') rec.housemaster = null; else rec.lead = null;
+  const ok = await persist(slot.storageKey, rec);
+  if(!ok) return;
+  entry.record = rec; render();
+  showToast('Account removed.');
+}
+
+async function adminPickSection(sectionKey){
+  state.adminStaffSection = sectionKey; state.adminStaffInfo = null; state.adminStaffLoading = true; render();
+  let info = {housemaster:null, staff:[]};
+  try{ const r = await safeGet('house-info:'+sectionKey); if(r) info = JSON.parse(r.value); }catch(e){}
+  if(!Array.isArray(info.staff)) info.staff = [];
+  if(state.adminStaffSection !== sectionKey) return;
+  state.adminStaffInfo = info; state.adminStaffLoading = false; render();
+}
+async function submitAdminStaff(e){
+  e.preventDefault();
+  const f = e.target;
+  const d = state.modal.data;
+  const member = {id: d.id || uuid(), name: f.stName.value.trim(), portfolio: f.stPortfolio.value.trim()};
+  if(!member.name){ showToast('Staff name is required.'); return; }
+  const info = state.adminStaffInfo;
+  if(!info) return;
+  const staff = info.staff.slice();
+  const idx = staff.findIndex(x=>x.id===member.id);
+  if(idx>=0) staff[idx]=member; else staff.push(member);
+  const next = {...info, staff};
+  const ok = await persist('house-info:'+state.adminStaffSection, next);
+  if(!ok) return;
+  state.adminStaffInfo = next;
+  closeModal();
+  // keep the Accounts tab's copy of this record in sync
+  const entry = state.adminAccounts.find(a=>a.slot.storageKey==='house-info:'+state.adminStaffSection);
+  if(entry) entry.record = next;
+  showToast('Staff member saved.');
+}
+async function adminRemoveStaff(id){
+  const info = state.adminStaffInfo;
+  if(!info) return;
+  const m = info.staff.find(x=>x.id===id);
+  if(!m || !confirm('Remove '+m.name+' from this house team?')) return;
+  const next = {...info, staff: info.staff.filter(x=>x.id!==id)};
+  const ok = await persist('house-info:'+state.adminStaffSection, next);
+  if(!ok) return;
+  state.adminStaffInfo = next;
+  const entry = state.adminAccounts.find(a=>a.slot.storageKey==='house-info:'+state.adminStaffSection);
+  if(entry) entry.record = next;
+  render();
+  showToast('Staff member removed.');
+}
+
+function renderAdminAuthScreen(){
+  return `
+  <div class="select-screen">
+    <div class="crest" style="background:#3A4640;">&#9881;</div>
+    ${state.authMode==='setup' ? `
+      <div class="select-header">
+        <div class="eyebrow">SYSTEM ADMINISTRATOR</div>
+        <h1 style="font-size:30px;">Set up administrator</h1>
+        <p>No administrator exists yet. Whoever creates this account can create, reset and remove every other login — so it should be done by the person responsible for the system. Choose a PIN you will remember.</p>
+      </div>
+      <div class="panel" style="max-width:380px;width:100%;">
+        <form onsubmit="submitAdminSetup(event)">
+          <div class="field"><label>Full name</label><input type="text" name="adName" required autofocus></div>
+          <div class="field-row">
+            <div class="field"><label>Choose a PIN (4–6 digits)</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+            <div class="field"><label>Confirm PIN</label><input type="password" name="pinConfirm" inputmode="numeric" maxlength="6" required></div>
+          </div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Create administrator</button>
+        </form>
+      </div>
+    ` : `
+      <div class="select-header">
+        <div class="eyebrow">SYSTEM ADMINISTRATOR</div>
+        <h1 style="font-size:30px;">Welcome back</h1>
+        <p>Enter the administrator name and PIN to continue.</p>
+      </div>
+      <div class="panel" style="max-width:320px;width:100%;">
+        <form onsubmit="submitAdminLogin(event)">
+          <div class="field"><label>Full name</label><input type="text" name="adNameConfirm" required autofocus></div>
+          <div class="field"><label>PIN</label><input type="password" name="pin" inputmode="numeric" maxlength="6" required></div>
+          ${state.authError ? `<div style="color:var(--red-flag);font-size:12.5px;margin-bottom:10px;">${state.authError}</div>` : ''}
+          <button type="submit" class="btn" style="width:100%;justify-content:center;">Unlock</button>
+        </form>
+        <div style="font-size:11.5px;color:#B9C2B8;margin-top:12px;line-height:1.5;">Lost the administrator PIN? Delete the <code>admin-info</code> record in the Firebase console (Firestore &rarr; anloshs_house_register) and set up a new one.</div>
+      </div>
+    `}
+    <button class="switch-house-btn" style="width:auto;margin-top:20px;border:none;color:#B9C2B8;background:transparent;" onclick="exitAdmin()">&larr; Back</button>
+  </div>`;
+}
+
+function renderAdminPortal(){
+  const tabs = [['accounts','Login accounts'],['staff','House staff']];
+  const lead = state.adminInfo.lead;
+  return `
+  <div style="max-width:960px;margin:0 auto;padding:24px 16px;">
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:18px;">
+      <div style="flex:1;min-width:200px;">
+        <div class="eyebrow" style="color:var(--ink-soft);">SYSTEM ADMINISTRATOR</div>
+        <h1 style="margin:2px 0 0;font-family:'Fraunces',serif;font-size:26px;">Admin portal</h1>
+        <div style="font-size:12.5px;color:var(--ink-soft);">Signed in as ${escapeAttr(lead.name)}</div>
+      </div>
+      <button class="btn secondary small" onclick="openModal('admin-self')">My account</button>
+      <button class="btn secondary small" onclick="exitAdmin()">Sign out</button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;">
+      ${tabs.map(t=>`<button class="btn ${state.adminTab===t[0]?'':'secondary'} small" onclick="setAdminTab('${t[0]}')">${t[1]}</button>`).join('')}
+    </div>
+    ${state.adminTab==='accounts' ? renderAdminAccountsTab() : renderAdminStaffTab()}
+    <div class="footer-credit" style="margin-top:28px;color:var(--ink-soft);">HOUSE MANAGEMENT SYSTEM &middot; DEVELOPED BY KAIZEN TECHNOLOGIES — FRANCIS NORMANYO</div>
+  </div>`;
+}
+
+function renderAdminAccountsTab(){
+  if(state.adminAccountsLoading && !state.adminAccounts.length) return `<div class="loading-note">Loading accounts&hellip;</div>`;
+  const groups = {};
+  state.adminAccounts.forEach((a,i)=>{ (groups[a.slot.group] = groups[a.slot.group] || []).push({a,i}); });
+  return `
+  <p style="font-size:12.5px;color:var(--ink-soft);margin-top:0;">One login per portfolio. <b>Create</b> sets a name and PIN for an empty portfolio; <b>Edit / reset PIN</b> changes an existing one; <b>Remove</b> deletes the login (all student, attendance and exeat records are kept).</p>
+  ${Object.keys(groups).map(g=>`
+    <div class="panel" style="margin-bottom:14px;">
+      <h3 style="margin:0 0 6px;">${g}</h3>
+      ${groups[g].map(({a,i})=>{
+        const lead = slotLead(a.slot, a.record);
+        return `<div class="staff-list-item">
+          <div class="who">
+            <div class="n">${a.slot.label}</div>
+            <div class="p">${lead ? escapeAttr(lead.name)+' &middot; '+escapeAttr(lead.portfolio||'') : 'No account yet'}</div>
+          </div>
+          ${lead ? `
+            <button class="icon-btn" onclick="openModal('admin-account',{index:${i}})">Edit / reset PIN</button>
+            <button class="icon-btn" style="color:var(--red-flag);" onclick="adminRemoveAccount(${i})">Remove</button>
+          ` : `<button class="btn small" onclick="openModal('admin-account',{index:${i}})">+ Create</button>`}
+        </div>`;
+      }).join('')}
+    </div>`).join('')}`;
+}
+
+function renderAdminStaffTab(){
+  const keys = allSectionKeys();
+  const info = state.adminStaffInfo;
+  return `
+  <div class="panel">
+    <div class="field" style="max-width:360px;"><label>House section</label>
+      <select onchange="adminPickSection(this.value)">
+        ${keys.map(k=>`<option value="${k}" ${k===state.adminStaffSection?'selected':''}>${getHouse(k).name} — ${sectionMeta(sectionOf(k)).label}</option>`).join('')}
+      </select>
+    </div>
+    ${state.adminStaffLoading || !info ? `<div class="loading-note">Loading&hellip;</div>` : `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin:6px 0;">
+        <h3 style="margin:0;">Supporting staff</h3>
+        <button class="btn small" onclick="openModal('admin-staff')">+ Add staff</button>
+      </div>
+      ${info.staff.length===0 ? `<div class="empty-state">No additional staff in this section yet.</div>` :
+        info.staff.map(st=>`
+          <div class="staff-list-item">
+            <div class="avatar">${initials(st.name)}</div>
+            <div class="who"><div class="n">${escapeAttr(st.name)}</div><div class="p">${escapeAttr(st.portfolio||'Staff')}</div></div>
+            <button class="icon-btn" onclick='openModal("admin-staff", ${JSON.stringify(st).replace(/'/g,"&#39;")})'>Edit</button>
+            <button class="icon-btn" style="color:var(--red-flag);" onclick="adminRemoveStaff('${st.id}')">Remove</button>
+          </div>`).join('')}
+    `}
+  </div>`;
+}
+
+function renderAdminAccountModal(d){
+  const entry = state.adminAccounts[d.index];
+  if(!entry) return '';
+  const slot = entry.slot, lead = slotLead(slot, entry.record);
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>${lead?'Edit account':'Create account'}</h2>
+      <div style="font-size:12.5px;color:var(--ink-soft);margin:-6px 0 12px;">${slot.label}</div>
+      <form onsubmit="submitAdminAccount(event)">
+        <div class="field"><label>Full name</label><input type="text" name="acName" value="${escapeAttr(lead?lead.name:'')}" required></div>
+        ${slot.portfolios ? `<div class="field"><label>Portfolio</label>
+          <select name="acPortfolio">${slot.portfolios.map(p=>`<option ${p===((lead&&lead.portfolio)||slot.defaultPortfolio)?'selected':''}>${p}</option>`).join('')}</select></div>` : ''}
+        <div class="field-row">
+          <div class="field"><label>${lead?'New PIN (leave blank to keep)':'PIN (4–6 digits)'}</label><input type="password" name="pin" inputmode="numeric" maxlength="6" ${lead?'':'required'}></div>
+          <div class="field"><label>Confirm PIN</label><input type="password" name="pinConfirm" inputmode="numeric" maxlength="6" ${lead?'':'required'}></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderAdminStaffModal(d){
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>${d.id?'Edit staff member':'Add staff member'}</h2>
+      <form onsubmit="submitAdminStaff(event)">
+        <div class="field"><label>Full name</label><input type="text" name="stName" value="${escapeAttr(d.name||'')}" required></div>
+        <div class="field"><label>Portfolio / role</label><input type="text" name="stPortfolio" placeholder="e.g. Matron, Sports Master" value="${escapeAttr(d.portfolio||'')}"></div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+function renderAdminSelfModal(){
+  const lead = state.adminInfo.lead;
+  return `
+  <div class="modal-overlay" onclick="if(event.target===this) closeModal()">
+    <div class="modal">
+      <button class="close-x" onclick="closeModal()">&times;</button>
+      <h2>My administrator account</h2>
+      <form onsubmit="submitAdminSelf(event)">
+        <div class="field"><label>Full name</label><input type="text" name="adName" value="${escapeAttr(lead.name)}" required></div>
+        <div class="field-row">
+          <div class="field"><label>New PIN (leave blank to keep)</label><input type="password" name="newPin" inputmode="numeric" maxlength="6"></div>
+          <div class="field"><label>Confirm new PIN</label><input type="password" name="newPinConfirm" inputmode="numeric" maxlength="6"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn secondary" onclick="closeModal()">Cancel</button>
+          <button type="submit" class="btn">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>`;
+}
+
+window.selectAdmin=selectAdmin; window.submitAdminSetup=submitAdminSetup; window.submitAdminLogin=submitAdminLogin;
+window.exitAdmin=exitAdmin; window.setAdminTab=setAdminTab; window.submitAdminSelf=submitAdminSelf;
+window.submitAdminAccount=submitAdminAccount; window.adminRemoveAccount=adminRemoveAccount;
+window.adminPickSection=adminPickSection; window.submitAdminStaff=submitAdminStaff; window.adminRemoveStaff=adminRemoveStaff;
 
 init();
 </script>
