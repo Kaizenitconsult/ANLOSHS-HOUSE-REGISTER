@@ -64,7 +64,7 @@
   .section-card:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(6,14,10,.38);cursor:pointer;}
   .section-card:before{content:'';position:absolute;top:0;left:0;right:0;height:4px;background:var(--card-color);}
   .section-card .section-role{font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;color:var(--ink-soft);margin-top:6px;}
-  .crest-section{width:42px;height:48px;margin:0 auto 8px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:16px;font-weight:600;}
+  .crest-section{width:84px;height:96px;margin:0 auto 8px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:16px;font-weight:600;}
   .management-entry{margin-top:32px;max-width:520px;width:100%;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.22);border-radius:6px;padding:16px 20px;display:flex;align-items:flex-start;gap:14px;}
   .management-entry-icon{font-size:22px;color:#EFEBDD;flex-shrink:0;margin-top:2px;}
   .management-entry-title{color:#fff;font-family:'Fraunces',serif;font-weight:600;font-size:14.5px;}
@@ -72,7 +72,13 @@
   .role-pill-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
   .role-pill{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.28);color:#EFEBDD;font-size:11.5px;padding:7px 12px;border-radius:20px;cursor:pointer;transition:background .15s ease;}
   .role-pill:hover{background:rgba(255,255,255,.2);}
-  .crest{width:58px;height:66px;margin:6px auto 16px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
+  .crest{width:112px;height:127px;margin:6px auto 16px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--card-color);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:22px;font-weight:600;}
+  .logo-img{display:block;object-fit:contain;margin-left:auto;margin-right:auto;}
+  .logo-img.lg{width:100%;max-width:170px;height:112px;margin-bottom:8px;filter:contrast(1.12) saturate(1.25) drop-shadow(0 0 1px rgba(0,0,0,.35)) drop-shadow(0 4px 8px rgba(6,14,10,.35));}
+  .logo-img.xl{width:170px;height:170px;margin-top:6px;margin-bottom:16px;filter:contrast(1.12) saturate(1.25) drop-shadow(0 0 2px rgba(255,255,255,.95)) drop-shadow(0 6px 14px rgba(0,0,0,.55));}
+  .logo-img.sm{width:46px;height:46px;flex-shrink:0;filter:contrast(1.12) saturate(1.25) drop-shadow(0 0 1.5px rgba(255,255,255,.9));}
+  .logo-img.pv{width:120px;height:120px;border-radius:6px;background-color:#f1efe8;background-image:linear-gradient(45deg,#e2dfd4 25%,transparent 25%,transparent 75%,#e2dfd4 75%),linear-gradient(45deg,#e2dfd4 25%,transparent 25%,transparent 75%,#e2dfd4 75%);background-size:14px 14px;background-position:0 0,7px 7px;margin:0;}
+  .logo-img.school{width:150px;height:150px;margin-bottom:14px;filter:contrast(1.12) saturate(1.25) drop-shadow(0 0 2px rgba(255,255,255,.95)) drop-shadow(0 6px 14px rgba(0,0,0,.55));}
   .house-card h3{margin:0 0 4px;font-size:17px;}
   .house-card .tag{font-family:'IBM Plex Mono',monospace;font-size:11px;letter-spacing:.1em;color:var(--ink-soft);}
   .footer-credit{margin-top:52px;font-size:11px;color:#9CA79E;letter-spacing:.03em;font-family:'IBM Plex Mono',monospace;text-align:center;}
@@ -81,7 +87,7 @@
   .workspace{display:flex;min-height:100vh;}
   .sidebar{width:230px;flex-shrink:0;background:var(--ink);color:#EFEBDD;display:flex;flex-direction:column;padding:22px 16px;}
   .sidebar .brand{display:flex;align-items:center;gap:10px;margin-bottom:26px;padding:0 4px;}
-  .sidebar .crest-sm{width:34px;height:39px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:15px;font-weight:600;flex-shrink:0;}
+  .sidebar .crest-sm{width:44px;height:50px;clip-path:polygon(50% 0%,100% 16%,100% 58%,50% 100%,0% 58%,0% 16%);background:var(--accent);display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-size:15px;font-weight:600;flex-shrink:0;}
   .sidebar .brand-text .h{font-family:'Fraunces',serif;font-size:15px;line-height:1.2;font-weight:600;}
   .sidebar .brand-text .s{font-size:10px;color:#9CA79E;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em;}
   .nav-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:4px;font-size:13.5px;color:#D6DBD3;margin-bottom:2px;border:none;background:transparent;width:100%;text-align:left;transition:background .12s;}
@@ -1326,15 +1332,26 @@ function handlePhotoInput(input){
   if(!file) return;
   resizeImageFile(file, 100, 0.65, (dataUrl)=>{ state.modal.data.photo = dataUrl; render(); });
 }
+function readLogoFile(file, maxDim, cb){
+  const reader = new FileReader();
+  reader.onload = ev=>{
+    const raw = ev.target.result;
+    cleanLogoDataUrl(raw, maxDim, out=>{
+      if(out){ logoCleanCache.set(out, out); cb(out); }
+      else resizeImageFile(file, 320, 0.85, cb);
+    });
+  };
+  reader.readAsDataURL(file);
+}
 function handleSchoolLogoInput(input){
   const file = input.files[0];
   if(!file) return;
-  resizeImageFile(file, 320, 0.85, (dataUrl)=>{ state.modal.data.logo = dataUrl; render(); });
+  readLogoFile(file, 400, (dataUrl)=>{ state.modal.data.logo = dataUrl; render(); });
 }
 function handleHouseLogoInput(input){
   const file = input.files[0];
   if(!file) return;
-  resizeImageFile(file, 240, 0.85, (dataUrl)=>{ state.modal.data.logo = dataUrl; render(); });
+  readLogoFile(file, 400, (dataUrl)=>{ state.modal.data.logo = dataUrl; render(); });
 }
 
 async function submitHousemaster(e){
@@ -1853,9 +1870,96 @@ function render(){
 }
 
 function schoolLogoSrc(){ return state.schoolLogo || DEFAULT_SCHOOL_LOGO; }
+/* ---- Logo cleanup: transparent background + auto-fit ----
+   Removes a plain (white/light/solid) background by flood-filling from the image edges,
+   softens the cut edge, then crops to the logo's own bounds so any logo — wide, tall or
+   square — fills its box (CSS object-fit:contain then scales it to whatever space it has). */
+const TRANSPARENT_PX = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+const logoCleanCache = new Map();
+const logoPending = new Set();
+function cleanLogoDataUrl(src, maxDim, cb){
+  const img = new Image();
+  img.onload = ()=>{
+    try{
+      let w = img.naturalWidth, h = img.naturalHeight;
+      const sc = Math.min(1, maxDim/Math.max(w,h));
+      w = Math.max(1, Math.round(w*sc)); h = Math.max(1, Math.round(h*sc));
+      const c = document.createElement('canvas'); c.width=w; c.height=h;
+      const ctx = c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+      const id = ctx.getImageData(0,0,w,h), d = id.data;
+      const at = (x,y)=>(y*w+x)*4;
+      // Background = the most common colour around the image border (inset 2px to skip
+      // scanner/JPEG edge lines). Needs to cover at least 40% of the border to count.
+      const ring = [];
+      for(let x=2;x<w-2;x++){ ring.push(at(x,2)); ring.push(at(x,h-3)); }
+      for(let y=2;y<h-2;y++){ ring.push(at(2,y)); ring.push(at(w-3,y)); }
+      const buckets = new Map();
+      ring.forEach(i=>{
+        if(d[i+3]<200) return;
+        const key = (d[i]>>4)+','+(d[i+1]>>4)+','+(d[i+2]>>4);
+        const e = buckets.get(key) || {n:0,r:0,g:0,b:0};
+        e.n++; e.r+=d[i]; e.g+=d[i+1]; e.b+=d[i+2]; buckets.set(key,e);
+      });
+      let best = null; buckets.forEach(e=>{ if(!best || e.n>best.n) best=e; });
+      if(best && ring.length && best.n/ring.length >= 0.4 && w>8 && h>8){
+        const bg = [best.r/best.n, best.g/best.n, best.b/best.n];
+        const dist = i=>Math.sqrt((d[i]-bg[0])**2+(d[i+1]-bg[1])**2+(d[i+2]-bg[2])**2);
+        {
+          const TOL = 60;
+          const removed = new Uint8Array(w*h);
+          const stack = [];
+          const push = (x,y)=>{ const k=y*w+x; if(!removed[k]){ const i=k*4; if(d[i+3]<20 || dist(i)<=TOL){ removed[k]=1; stack.push(k); } } };
+          for(let x=0;x<w;x++){ for(const y of [0,h-1]){ const k=y*w+x; if(!removed[k]){ removed[k]=1; stack.push(k);} } }
+          for(let y=0;y<h;y++){ for(const x of [0,w-1]){ const k=y*w+x; if(!removed[k]){ removed[k]=1; stack.push(k);} } }
+          while(stack.length){
+            const k = stack.pop(), x = k%w, y = (k-x)/w;
+            if(x>0) push(x-1,y); if(x<w-1) push(x+1,y); if(y>0) push(x,y-1); if(y<h-1) push(x,y+1);
+          }
+          const fringe = [];
+          for(let k=0;k<w*h;k++){
+            if(removed[k]) continue;
+            const x=k%w, y=(k-x)/w;
+            if((x>0&&removed[k-1])||(x<w-1&&removed[k+1])||(y>0&&removed[k-w])||(y<h-1&&removed[k+w])){
+              const dd = dist(k*4);
+              if(dd < TOL*2.2) fringe.push([k, Math.max(0, Math.min(255, Math.round(255*(dd-TOL)/(TOL*1.2))))]);
+            }
+          }
+          for(let k=0;k<w*h;k++) if(removed[k]) d[k*4+3]=0;
+          fringe.forEach(([k,a])=>{ d[k*4+3]=Math.min(d[k*4+3],a); });
+          ctx.putImageData(id,0,0);
+        }
+      }
+      // crop to the logo's own bounds
+      let minX=w,minY=h,maxX=-1,maxY=-1;
+      for(let y=0;y<h;y++) for(let x=0;x<w;x++){ if(d[at(x,y)+3]>16){ if(x<minX)minX=x; if(x>maxX)maxX=x; if(y<minY)minY=y; if(y>maxY)maxY=y; } }
+      let out = c;
+      if(maxX>=minX && maxY>=minY){
+        const pad=2, sx=Math.max(0,minX-pad), sy=Math.max(0,minY-pad);
+        const cw=Math.min(w,maxX+pad+1)-sx, ch=Math.min(h,maxY+pad+1)-sy;
+        out = document.createElement('canvas'); out.width=cw; out.height=ch;
+        out.getContext('2d').drawImage(c,sx,sy,cw,ch,0,0,cw,ch);
+      }
+      cb(out.toDataURL('image/png'));
+    }catch(e){ console.error('logo clean error', e); cb(null); }
+  };
+  img.onerror = ()=>cb(null);
+  img.src = src;
+}
+function logoSrc(src){
+  if(!src || typeof Image==='undefined') return src;
+  if(logoCleanCache.has(src)) return logoCleanCache.get(src);
+  if(!logoPending.has(src)){
+    logoPending.add(src);
+    cleanLogoDataUrl(src, 400, out=>{ logoCleanCache.set(src, out || src); logoPending.delete(src); render(); });
+  }
+  return TRANSPARENT_PX;
+}
 function houseCrestHtml(h, sizeClass){
   const logo = state.houseLogos[h.id];
-  if(logo) return `<img class="${sizeClass}" src="${logo}" style="object-fit:cover;">`;
+  if(logo){
+    const v = {'crest-section':'lg','crest':'xl','crest-sm':'sm','photo-preview':'pv'}[sizeClass] || 'lg';
+    return `<img class="logo-img ${v}" src="${logoSrc(logo)}" alt="${h.name} logo">`;
+  }
   return `<div class="${sizeClass}" style="background:${h.hex};display:flex;align-items:center;justify-content:center;color:#fff;font-family:'Fraunces',serif;font-weight:600;">${h.name[0]}</div>`;
 }
 
@@ -1887,7 +1991,7 @@ function renderSetupNeededScreen(){
 function renderSelectScreen(){
   return `
   <div class="select-screen">
-    <img src="${schoolLogoSrc()}" alt="ANSECO crest" style="width:96px;height:96px;object-fit:contain;margin-bottom:14px;">
+    <img class="logo-img school" src="${logoSrc(schoolLogoSrc())}" alt="ANSECO crest">
     <div class="select-header">
       <div class="eyebrow">ANLO SENIOR HIGH SCHOOL</div>
       <h1>House Register</h1>
@@ -3064,10 +3168,10 @@ function renderSchoolLogoModal(d){
       <p style="font-size:12.5px;color:var(--ink-soft);margin-top:-8px;">This crest appears on the house-select screen for every house. Visible to anyone using this system.</p>
       <form onsubmit="submitSchoolLogo(event)">
         <div class="photo-upload">
-          <img class="photo-preview" style="border-radius:6px;" src="${d.logo || schoolLogoSrc()}">
+          <img class="logo-img pv" src="${logoSrc(d.logo || schoolLogoSrc())}">
           <div>
             <input class="file-btn" type="file" accept="image/*" onchange="handleSchoolLogoInput(this)">
-            <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">JPG or PNG, auto-resized</div>
+            <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">JPG or PNG. The background is removed and the logo is auto-fitted.</div>
           </div>
         </div>
         <div class="modal-actions">
@@ -3088,7 +3192,7 @@ function renderHouseLogoModal(d){
       <h2>${h.name} logo</h2>
       <form onsubmit="submitHouseLogo(event)">
         <div class="photo-upload">
-          <img class="photo-preview" style="border-radius:6px;" src="${d.logo || state.houseLogos[h.id] || ''}" onerror="this.style.display='none'">
+          <img class="logo-img pv" src="${(d.logo || state.houseLogos[h.id]) ? logoSrc(d.logo || state.houseLogos[h.id]) : TRANSPARENT_PX}">
           <div>
             <input class="file-btn" type="file" accept="image/*" onchange="handleHouseLogoInput(this)">
             <div style="font-size:11px;color:var(--ink-soft);margin-top:4px;">JPG or PNG, auto-resized</div>
